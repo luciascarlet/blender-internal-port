@@ -1,0 +1,1222 @@
+diff --git a/build_files/cmake/platform/platform_apple.cmake b/build_files/cmake/platform/platform_apple.cmake
+index 6105f2e..c5722a1 100644
+--- a/build_files/cmake/platform/platform_apple.cmake
++++ b/build_files/cmake/platform/platform_apple.cmake
+@@ -1,473 +1,19 @@
+-# ***** BEGIN GPL LICENSE BLOCK *****
+-#
+-# This program is free software; you can redistribute it and/or
+-# modify it under the terms of the GNU General Public License
+-# as published by the Free Software Foundation; either version 2
+-# of the License, or (at your option) any later version.
+-#
+-# This program is distributed in the hope that it will be useful,
+-# but WITHOUT ANY WARRANTY; without even the implied warranty of
+-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-# GNU General Public License for more details.
+-#
+-# You should have received a copy of the GNU General Public License
+-# along with this program; if not, write to the Free Software Foundation,
+-# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+-#
+-# The Original Code is Copyright (C) 2016, Blender Foundation
+-# All rights reserved.
+-#
+-# Contributor(s): Sergey Sharybin.
+-#
+-# ***** END GPL LICENSE BLOCK *****
+-
+-# Libraries configuration for Apple.
+-
++# SPDX-License-Identifier: GPL-2.0-or-later
++# Minimal modern macOS dependency configuration for the full Internal engine.
+ macro(find_package_wrapper)
+-# do nothing, just satisfy the macro
++  find_package(${ARGV})
+ endmacro()
+-
+-if(NOT DEFINED LIBDIR)
+-	if(WITH_CXX11)
+-		set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin)
+-	else()
+-		set(LIBDIR ${CMAKE_SOURCE_DIR}/../lib/darwin-9.x.universal)
+-	endif()
++if(INTERNAL_DEPS_ROOT)
++  list(PREPEND CMAKE_PREFIX_PATH ${INTERNAL_DEPS_ROOT})
+ else()
+-	message(STATUS "Using pre-compiled LIBDIR: ${LIBDIR}")
++  list(PREPEND CMAKE_PREFIX_PATH /opt/local)
+ endif()
+-if(NOT EXISTS "${LIBDIR}/")
+-	message(FATAL_ERROR "Mac OSX requires pre-compiled libs at: '${LIBDIR}'")
+-endif()
+-
+-if(WITH_OPENAL)
+-	find_package(OpenAL)
+-	if(OPENAL_FOUND)
+-		set(WITH_OPENAL ON)
+-		set(OPENAL_INCLUDE_DIR "${LIBDIR}/openal/include")
+-	else()
+-		set(WITH_OPENAL OFF)
+-	endif()
+-endif()
+-
+-if(WITH_ALEMBIC)
+-	set(ALEMBIC ${LIBDIR}/alembic)
+-	set(ALEMBIC_INCLUDE_DIR ${ALEMBIC}/include)
+-	set(ALEMBIC_INCLUDE_DIRS ${ALEMBIC_INCLUDE_DIR})
+-	set(ALEMBIC_LIBPATH ${ALEMBIC}/lib)
+-	set(ALEMBIC_LIBRARIES Alembic)
+-	set(ALEMBIC_FOUND ON)
+-endif()
+-
+-if(WITH_OPENSUBDIV OR WITH_CYCLES_OPENSUBDIV)
+-	set(OPENSUBDIV ${LIBDIR}/opensubdiv)
+-	set(OPENSUBDIV_LIBPATH ${OPENSUBDIV}/lib)
+-	find_library(OSD_LIB_CPU NAMES osdCPU PATHS ${OPENSUBDIV_LIBPATH})
+-	find_library(OSD_LIB_GPU NAMES osdGPU PATHS ${OPENSUBDIV_LIBPATH})
+-	set(OPENSUBDIV_INCLUDE_DIR ${OPENSUBDIV}/include)
+-	set(OPENSUBDIV_INCLUDE_DIRS ${OPENSUBDIV_INCLUDE_DIR})
+-	list(APPEND OPENSUBDIV_LIBRARIES ${OSD_LIB_CPU} ${OSD_LIB_GPU})
+-endif()
+-
+-if(WITH_JACK)
+-	find_library(JACK_FRAMEWORK
+-		NAMES jackmp
+-	)
+-	set(JACK_INCLUDE_DIRS ${JACK_FRAMEWORK}/headers)
+-	if(NOT JACK_FRAMEWORK)
+-		set(WITH_JACK OFF)
+-	endif()
+-endif()
+-
+-if(WITH_CODEC_SNDFILE)
+-	set(SNDFILE ${LIBDIR}/sndfile)
+-	set(SNDFILE_INCLUDE_DIRS ${SNDFILE}/include)
+-	set(SNDFILE_LIBRARIES sndfile FLAC ogg vorbis vorbisenc)
+-	set(SNDFILE_LIBPATH ${SNDFILE}/lib ${LIBDIR}/ffmpeg/lib)  # TODO, deprecate
+-endif()
+-
+-if(WITH_PYTHON)
+-	# we use precompiled libraries for py 3.5 and up by default
+-	set(PYTHON_VERSION 3.5)
+-	if(NOT WITH_PYTHON_MODULE AND NOT WITH_PYTHON_FRAMEWORK)
+-		# normally cached but not since we include them with blender
+-		set(PYTHON_INCLUDE_DIR "${LIBDIR}/python/include/python${PYTHON_VERSION}m")
+-		set(PYTHON_EXECUTABLE "${LIBDIR}/python/bin/python${PYTHON_VERSION}m")
+-		set(PYTHON_LIBRARY python${PYTHON_VERSION}m)
+-		set(PYTHON_LIBPATH "${LIBDIR}/python/lib/python${PYTHON_VERSION}")
+-		# set(PYTHON_LINKFLAGS "-u _PyMac_Error")  # won't  build with this enabled
+-	else()
+-		# module must be compiled against Python framework
+-		set(_py_framework "/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}")
+-
+-		set(PYTHON_INCLUDE_DIR "${_py_framework}/include/python${PYTHON_VERSION}m")
+-		set(PYTHON_EXECUTABLE "${_py_framework}/bin/python${PYTHON_VERSION}m")
+-		set(PYTHON_LIBPATH "${_py_framework}/lib/python${PYTHON_VERSION}/config-${PYTHON_VERSION}m")
+-		#set(PYTHON_LIBRARY python${PYTHON_VERSION})
+-		#set(PYTHON_LINKFLAGS "-u _PyMac_Error -framework Python")  # won't  build with this enabled
+-
+-		unset(_py_framework)
+-	endif()
+-
+-	# uncached vars
+-	set(PYTHON_INCLUDE_DIRS "${PYTHON_INCLUDE_DIR}")
+-	set(PYTHON_LIBRARIES  "${PYTHON_LIBRARY}")
+-
+-	if(NOT EXISTS "${PYTHON_EXECUTABLE}")
+-		message(FATAL_ERROR "Python executable missing: ${PYTHON_EXECUTABLE}")
+-	endif()
+-endif()
+-
+-if(WITH_FFTW3)
+-	set(FFTW3 ${LIBDIR}/fftw3)
+-	set(FFTW3_INCLUDE_DIRS ${FFTW3}/include)
+-	set(FFTW3_LIBRARIES fftw3)
+-	set(FFTW3_LIBPATH ${FFTW3}/lib)
+-endif()
+-
+-set(PNG_LIBRARIES png)
+-set(JPEG_LIBRARIES jpeg)
+-
+-set(ZLIB /usr)
+-set(ZLIB_INCLUDE_DIRS "${ZLIB}/include")
+-set(ZLIB_LIBRARIES z bz2)
+-
+-set(FREETYPE ${LIBDIR}/freetype)
+-set(FREETYPE_INCLUDE_DIRS ${FREETYPE}/include ${FREETYPE}/include/freetype2)
+-set(FREETYPE_LIBPATH ${FREETYPE}/lib)
+-set(FREETYPE_LIBRARY freetype)
+-
+-if(WITH_IMAGE_OPENEXR)
+-	set(OPENEXR ${LIBDIR}/openexr)
+-	set(OPENEXR_INCLUDE_DIR ${OPENEXR}/include)
+-	set(OPENEXR_INCLUDE_DIRS ${OPENEXR_INCLUDE_DIR} ${OPENEXR}/include/OpenEXR)
+-	if(WITH_CXX11)
+-		set(OPENEXR_POSTFIX -2_2)
+-	else()
+-		set(OPENEXR_POSTFIX)
+-	endif()
+-	set(OPENEXR_LIBRARIES
+-		Iex${OPENEXR_POSTFIX}
+-		Half
+-		IlmImf${OPENEXR_POSTFIX}
+-		Imath${OPENEXR_POSTFIX}
+-		IlmThread${OPENEXR_POSTFIX})
+-	set(OPENEXR_LIBPATH ${OPENEXR}/lib)
+-endif()
+-
+-if(WITH_CODEC_FFMPEG)
+-	set(FFMPEG ${LIBDIR}/ffmpeg)
+-	set(FFMPEG_INCLUDE_DIRS ${FFMPEG}/include)
+-	set(FFMPEG_LIBRARIES
+-		avcodec avdevice avformat avutil
+-		mp3lame swscale x264 xvidcore theora theoradec theoraenc vorbis vorbisenc vorbisfile ogg
+-	)
+-	if(WITH_CXX11)
+-		set(FFMPEG_LIBRARIES ${FFMPEG_LIBRARIES} schroedinger orc vpx webp swresample)
+-	endif()
+-	set(FFMPEG_LIBPATH ${FFMPEG}/lib)
+-endif()
+-
+-if(WITH_OPENJPEG OR WITH_CODEC_FFMPEG)
+-	# use openjpeg from libdir that is linked into ffmpeg
+-	if(WITH_CXX11)
+-		set(OPENJPEG ${LIBDIR}/openjpeg)
+-		set(WITH_SYSTEM_OPENJPEG ON)
+-		set(OPENJPEG_INCLUDE_DIRS ${OPENJPEG}/include)
+-		set(OPENJPEG_LIBRARIES ${OPENJPEG}/lib/libopenjpeg.a)
+-	endif()
+-endif()
+-
+-find_library(SYSTEMSTUBS_LIBRARY
+-	NAMES
+-	SystemStubs
+-	PATHS
+-)
+-mark_as_advanced(SYSTEMSTUBS_LIBRARY)
+-if(SYSTEMSTUBS_LIBRARY)
+-	list(APPEND PLATFORM_LINKLIBS SystemStubs)
+-endif()
+-
++find_package(ZLIB REQUIRED)
++find_package(PNG REQUIRED)
++find_package(JPEG REQUIRED)
++find_package(Freetype REQUIRED)
++set(FREETYPE_LIBRARY ${FREETYPE_LIBRARIES})
+ set(PLATFORM_CFLAGS "-pipe -funsigned-char")
+-set(PLATFORM_LINKFLAGS
+-	"-fexceptions -framework CoreServices -framework Foundation -framework IOKit -framework AppKit -framework Cocoa -framework Carbon -framework AudioUnit -framework AudioToolbox -framework CoreAudio"
+-)
+-if(WITH_CODEC_QUICKTIME)
+-	set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -framework QTKit")
+-	if(CMAKE_OSX_ARCHITECTURES MATCHES i386)
+-		set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -framework QuickTime")
+-		# libSDL still needs 32bit carbon quicktime
+-	endif()
+-endif()
+-
+-if(WITH_CXX11)
+-	list(APPEND PLATFORM_LINKLIBS c++)
+-else()
+-	list(APPEND PLATFORM_LINKLIBS stdc++)
+-endif()
+-
+-if(WITH_JACK)
+-	set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -F/Library/Frameworks -weak_framework jackmp")
+-endif()
+-
+-if(WITH_PYTHON_MODULE OR WITH_PYTHON_FRAMEWORK)
+-	# force cmake to link right framework
+-	set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} /Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/Python")
+-endif()
+-
+-if(WITH_OPENCOLLADA)
+-	set(OPENCOLLADA ${LIBDIR}/opencollada)
+-
+-	set(OPENCOLLADA_INCLUDE_DIRS
+-		${LIBDIR}/opencollada/include/COLLADAStreamWriter
+-		${LIBDIR}/opencollada/include/COLLADABaseUtils
+-		${LIBDIR}/opencollada/include/COLLADAFramework
+-		${LIBDIR}/opencollada/include/COLLADASaxFrameworkLoader
+-		${LIBDIR}/opencollada/include/GeneratedSaxParser
+-	)
+-
+-	set(OPENCOLLADA_LIBPATH ${OPENCOLLADA}/lib)
+-	set(OPENCOLLADA_LIBRARIES
+-		OpenCOLLADASaxFrameworkLoader
+-		-lOpenCOLLADAFramework
+-		-lOpenCOLLADABaseUtils
+-		-lOpenCOLLADAStreamWriter
+-		-lMathMLSolver
+-		-lGeneratedSaxParser
+-		-lxml2 -lbuffer -lftoa
+-	)
+-	# Use UTF functions from collada if LLVM is not enabled
+-	if(NOT WITH_LLVM)
+-		list(APPEND OPENCOLLADA_LIBRARIES -lUTF)
+-	endif()
+-	# pcre is bundled with openCollada
+-	#set(PCRE ${LIBDIR}/pcre)
+-	#set(PCRE_LIBPATH ${PCRE}/lib)
+-	set(PCRE_LIBRARIES pcre)
+-	#libxml2 is used
+-	#set(EXPAT ${LIBDIR}/expat)
+-	#set(EXPAT_LIBPATH ${EXPAT}/lib)
+-	set(EXPAT_LIB)
+-endif()
+-
+-if(WITH_SDL)
+-	set(SDL ${LIBDIR}/sdl)
+-	set(SDL_INCLUDE_DIR ${SDL}/include)
+-	set(SDL_LIBRARY SDL2)
+-	set(SDL_LIBPATH ${SDL}/lib)
+-	if(WITH_CXX11)
+-		set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -framework ForceFeedback")
+-	else()
+-		set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -lazy_framework ForceFeedback")
+-	endif()
+-endif()
+-
+-set(PNG "${LIBDIR}/png")
+-set(PNG_INCLUDE_DIRS "${PNG}/include")
+-set(PNG_LIBPATH ${PNG}/lib)
+-
+-set(JPEG "${LIBDIR}/jpeg")
+-set(JPEG_INCLUDE_DIR "${JPEG}/include")
+-set(JPEG_LIBPATH ${JPEG}/lib)
+-
+-if(WITH_IMAGE_TIFF)
+-	set(TIFF ${LIBDIR}/tiff)
+-	set(TIFF_INCLUDE_DIR ${TIFF}/include)
+-	set(TIFF_LIBRARY tiff)
+-	set(TIFF_LIBPATH ${TIFF}/lib)
+-endif()
+-
+-if(WITH_BOOST)
+-	set(BOOST ${LIBDIR}/boost)
+-	set(BOOST_INCLUDE_DIR ${BOOST}/include)
+-	if(WITH_CXX11)
+-		set(BOOST_POSTFIX)
+-	else()
+-		set(BOOST_POSTFIX -mt)
+-	endif()
+-	set(BOOST_LIBRARIES
+-		boost_date_time${BOOST_POSTFIX}
+-		boost_filesystem${BOOST_POSTFIX}
+-		boost_regex${BOOST_POSTFIX}
+-		boost_system${BOOST_POSTFIX}
+-		boost_thread${BOOST_POSTFIX}
+-		boost_wave${BOOST_POSTFIX}
+-	)
+-	if(WITH_INTERNATIONAL)
+-		list(APPEND BOOST_LIBRARIES boost_locale${BOOST_POSTFIX})
+-	endif()
+-	if(WITH_CYCLES_NETWORK)
+-		list(APPEND BOOST_LIBRARIES boost_serialization${BOOST_POSTFIX})
+-	endif()
+-	if(WITH_OPENVDB)
+-		list(APPEND BOOST_LIBRARIES boost_iostreams${BOOST_POSTFIX})
+-	endif()
+-	set(BOOST_LIBPATH ${BOOST}/lib)
+-	set(BOOST_DEFINITIONS)
+-endif()
+-
+-if(WITH_INTERNATIONAL OR WITH_CODEC_FFMPEG)
+-	set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -liconv") # boost_locale and ffmpeg needs it !
+-endif()
+-
+-if(WITH_OPENIMAGEIO)
+-	set(OPENIMAGEIO ${LIBDIR}/openimageio)
+-	set(OPENIMAGEIO_INCLUDE_DIRS ${OPENIMAGEIO}/include)
+-	set(OPENIMAGEIO_LIBRARIES
+-		${OPENIMAGEIO}/lib/libOpenImageIO.a
+-		${PNG_LIBRARIES}
+-		${JPEG_LIBRARIES}
+-		${TIFF_LIBRARY}
+-		${OPENEXR_LIBRARIES}
+-		${ZLIB_LIBRARIES}
+-	)
+-	if(WITH_CXX11)
+-		set(OPENIMAGEIO_LIBRARIES ${OPENIMAGEIO_LIBRARIES} ${LIBDIR}/ffmpeg/lib/libwebp.a)
+-	endif()
+-	set(OPENIMAGEIO_LIBPATH
+-		${OPENIMAGEIO}/lib
+-		${JPEG_LIBPATH}
+-		${PNG_LIBPATH}
+-		${TIFF_LIBPATH}
+-		${OPENEXR_LIBPATH}
+-		${ZLIB_LIBPATH}
+-	)
+-	set(OPENIMAGEIO_DEFINITIONS "-DOIIO_STATIC_BUILD")
+-	set(OPENIMAGEIO_IDIFF "${LIBDIR}/openimageio/bin/idiff")
+-endif()
+-
+-if(WITH_OPENCOLORIO)
+-	set(OPENCOLORIO ${LIBDIR}/opencolorio)
+-	set(OPENCOLORIO_INCLUDE_DIRS ${OPENCOLORIO}/include)
+-	set(OPENCOLORIO_LIBRARIES OpenColorIO tinyxml yaml-cpp)
+-	set(OPENCOLORIO_LIBPATH ${OPENCOLORIO}/lib)
+-endif()
+-
+-if(WITH_OPENVDB)
+-	set(OPENVDB ${LIBDIR}/openvdb)
+-	set(OPENVDB_INCLUDE_DIRS ${OPENVDB}/include)
+-	set(TBB_INCLUDE_DIRS ${LIBDIR}/tbb/include)
+-	set(TBB_LIBRARIES ${LIBDIR}/tbb/lib/libtbb.a)
+-	set(OPENVDB_LIBRARIES openvdb blosc ${TBB_LIBRARIES})
+-	set(OPENVDB_LIBPATH ${LIBDIR}/openvdb/lib)
+-	set(OPENVDB_DEFINITIONS)
+-endif()
+-
+-if(WITH_LLVM)
+-	set(LLVM_ROOT_DIR ${LIBDIR}/llvm CACHE PATH	"Path to the LLVM installation")
+-	set(LLVM_VERSION "3.4" CACHE STRING	"Version of LLVM to use")
+-	if(EXISTS "${LLVM_ROOT_DIR}/bin/llvm-config")
+-		set(LLVM_CONFIG "${LLVM_ROOT_DIR}/bin/llvm-config")
+-	else()
+-		set(LLVM_CONFIG llvm-config)
+-	endif()
+-	execute_process(COMMAND ${LLVM_CONFIG} --version
+-			OUTPUT_VARIABLE LLVM_VERSION
+-			OUTPUT_STRIP_TRAILING_WHITESPACE)
+-	execute_process(COMMAND ${LLVM_CONFIG} --prefix
+-			OUTPUT_VARIABLE LLVM_ROOT_DIR
+-			OUTPUT_STRIP_TRAILING_WHITESPACE)
+-	execute_process(COMMAND ${LLVM_CONFIG} --libdir
+-			OUTPUT_VARIABLE LLVM_LIBPATH
+-			OUTPUT_STRIP_TRAILING_WHITESPACE)
+-	find_library(LLVM_LIBRARY
+-		      NAMES LLVMAnalysis # first of a whole bunch of libs to get
+-		      PATHS ${LLVM_LIBPATH})
+-
+-	if(LLVM_LIBRARY AND LLVM_ROOT_DIR AND LLVM_LIBPATH)
+-		if(LLVM_STATIC)
+-			# if static LLVM libraries were requested, use llvm-config to generate
+-			# the list of what libraries we need, and substitute that in the right
+-			# way for LLVM_LIBRARY.
+-			execute_process(COMMAND ${LLVM_CONFIG} --libfiles
+-					OUTPUT_VARIABLE LLVM_LIBRARY
+-					OUTPUT_STRIP_TRAILING_WHITESPACE)
+-			string(REPLACE " " ";" LLVM_LIBRARY ${LLVM_LIBRARY})
+-		else()
+-			set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -lLLVM-3.4")
+-		endif()
+-	else()
+-		message(FATAL_ERROR "LLVM not found.")
+-	endif()
+-endif()
+-
+-if(WITH_CYCLES_OSL)
+-	set(CYCLES_OSL ${LIBDIR}/osl CACHE PATH "Path to OpenShadingLanguage installation")
+-
+-	find_library(OSL_LIB_EXEC NAMES oslexec PATHS ${CYCLES_OSL}/lib)
+-	find_library(OSL_LIB_COMP NAMES oslcomp PATHS ${CYCLES_OSL}/lib)
+-	find_library(OSL_LIB_QUERY NAMES oslquery PATHS ${CYCLES_OSL}/lib)
+-	# WARNING! depends on correct order of OSL libs linking
+-	list(APPEND OSL_LIBRARIES ${OSL_LIB_COMP} -force_load ${OSL_LIB_EXEC} ${OSL_LIB_QUERY})
+-	find_path(OSL_INCLUDE_DIR OSL/oslclosure.h PATHS ${CYCLES_OSL}/include)
+-	find_program(OSL_COMPILER NAMES oslc PATHS ${CYCLES_OSL}/bin)
+-
+-	if(OSL_INCLUDE_DIR AND OSL_LIBRARIES AND OSL_COMPILER)
+-		set(OSL_FOUND TRUE)
+-	else()
+-		message(STATUS "OSL not found")
+-		set(WITH_CYCLES_OSL OFF)
+-	endif()
+-endif()
+-
+-if(WITH_OPENMP)
+-	execute_process(COMMAND ${CMAKE_C_COMPILER} --version OUTPUT_VARIABLE COMPILER_VENDOR)
+-	string(SUBSTRING "${COMPILER_VENDOR}" 0 5 VENDOR_NAME) # truncate output
+-	if(${VENDOR_NAME} MATCHES "Apple") # Apple does not support OpenMP reliable with gcc and not with clang
+-		set(WITH_OPENMP OFF)
+-	else() # vanilla gcc or clang_omp support OpenMP
+-		message(STATUS "Using special OpenMP enabled compiler !") # letting find_package(OpenMP) module work for gcc
+-		if(CMAKE_C_COMPILER_ID MATCHES "Clang") # clang-omp in darwin libs
+-			set(OPENMP_FOUND ON)
+-			set(OpenMP_C_FLAGS "-fopenmp" CACHE STRING "C compiler flags for OpenMP parallization" FORCE)
+-			set(OpenMP_CXX_FLAGS "-fopenmp" CACHE STRING "C++ compiler flags for OpenMP parallization" FORCE)
+-			include_directories(${LIBDIR}/openmp/include)
+-			link_directories(${LIBDIR}/openmp/lib)
+-			# This is a workaround for our helperbinaries ( datatoc, masgfmt, ... ),
+-			# They are linked also to omp lib, so we need it in builddir for runtime exexcution,
+-			# TODO: remove all unneeded dependencies from these
+-
+-			# for intermediate binaries, in respect to lib ID
+-			execute_process(
+-				COMMAND ditto -arch ${CMAKE_OSX_ARCHITECTURES}
+-				${LIBDIR}/openmp/lib/libiomp5.dylib
+-				${CMAKE_BINARY_DIR}/Resources/lib/libiomp5.dylib)
+-		endif()
+-	endif()
+-endif()
+-
++set(PLATFORM_LINKFLAGS "-fexceptions -framework CoreServices -framework Foundation -framework IOKit -framework AppKit -framework Cocoa -framework Carbon -framework AudioUnit -framework AudioToolbox -framework CoreAudio -framework OpenGL")
++list(APPEND PLATFORM_LINKLIBS c++ bz2)
+ set(EXETYPE MACOSX_BUNDLE)
+-
+-set(CMAKE_C_FLAGS_DEBUG "-fno-strict-aliasing -g")
+-set(CMAKE_CXX_FLAGS_DEBUG "-fno-strict-aliasing -g")
+-if(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64" OR CMAKE_OSX_ARCHITECTURES MATCHES "i386")
+-	set(CMAKE_CXX_FLAGS_RELEASE "-O2 -mdynamic-no-pic -msse -msse2 -msse3 -mssse3")
+-	set(CMAKE_C_FLAGS_RELEASE "-O2 -mdynamic-no-pic  -msse -msse2 -msse3 -mssse3")
+-	if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+-		set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -ftree-vectorize  -fvariable-expansion-in-unroller")
+-		set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ftree-vectorize  -fvariable-expansion-in-unroller")
+-	endif()
+-else()
+-	set(CMAKE_C_FLAGS_RELEASE "-mdynamic-no-pic -fno-strict-aliasing")
+-	set(CMAKE_CXX_FLAGS_RELEASE "-mdynamic-no-pic -fno-strict-aliasing")
+-endif()
+-
+-if(${XCODE_VERSION} VERSION_EQUAL 5 OR ${XCODE_VERSION} VERSION_GREATER 5)
+-	# Xcode 5 is always using CLANG, which has too low template depth of 128 for libmv
+-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-depth=1024")
+-endif()
+-# Get rid of eventually clashes, we export some symbols explicite as local
+-set(PLATFORM_LINKFLAGS
+-	"${PLATFORM_LINKFLAGS} -Xlinker -unexported_symbols_list -Xlinker ${CMAKE_SOURCE_DIR}/source/creator/osx_locals.map"
+-)
+-
+-if(WITH_CXX11)
+-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+-	set(PLATFORM_LINKFLAGS "${PLATFORM_LINKFLAGS} -stdlib=libc++")
+-endif()
+-
+-# Suppress ranlib "has no symbols" warnings (workaround for T48250)
+-set(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+-set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
+-set(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+-set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+diff --git a/build_files/cmake/platform/platform_apple_xcode.cmake b/build_files/cmake/platform/platform_apple_xcode.cmake
+index e76a778..55c3661 100644
+--- a/build_files/cmake/platform/platform_apple_xcode.cmake
++++ b/build_files/cmake/platform/platform_apple_xcode.cmake
+@@ -1,135 +1,6 @@
+-# ***** BEGIN GPL LICENSE BLOCK *****
+-#
+-# This program is free software; you can redistribute it and/or
+-# modify it under the terms of the GNU General Public License
+-# as published by the Free Software Foundation; either version 2
+-# of the License, or (at your option) any later version.
+-#
+-# This program is distributed in the hope that it will be useful,
+-# but WITHOUT ANY WARRANTY; without even the implied warranty of
+-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-# GNU General Public License for more details.
+-#
+-# You should have received a copy of the GNU General Public License
+-# along with this program; if not, write to the Free Software Foundation,
+-# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+-#
+-# The Original Code is Copyright (C) 2016, Blender Foundation
+-# All rights reserved.
+-#
+-# Contributor(s): Jacques Beaurain.
+-#
+-# ***** END GPL LICENSE BLOCK *****
+-
+-# Xcode and system configuration for Apple.
+-
+-# require newer cmake on osx because of version handling,
+-# older cmake cannot handle 2 digit subversion!
+-cmake_minimum_required(VERSION 3.0.0)
+-
+-if(NOT CMAKE_OSX_ARCHITECTURES)
+-	set(CMAKE_OSX_ARCHITECTURES x86_64 CACHE STRING
+-		"Choose the architecture you want to build Blender for: i386, x86_64 or ppc"
+-		FORCE)
+-endif()
+-
+-if(NOT DEFINED OSX_SYSTEM)
+-	execute_process(
+-			COMMAND xcodebuild -version -sdk macosx SDKVersion
+-			OUTPUT_VARIABLE OSX_SYSTEM
+-			OUTPUT_STRIP_TRAILING_WHITESPACE)
+-endif()
+-
+-# workaround for incorrect cmake xcode lookup for developer previews - XCODE_VERSION does not
+-# take xcode-select path into account but would always look  into /Applications/Xcode.app
+-# while dev versions are named Xcode<version>-DP<preview_number>
+-execute_process(
+-		COMMAND xcode-select --print-path
+-		OUTPUT_VARIABLE XCODE_CHECK OUTPUT_STRIP_TRAILING_WHITESPACE)
+-string(REPLACE "/Contents/Developer" "" XCODE_BUNDLE ${XCODE_CHECK}) # truncate to bundlepath in any case
+-
+-if(${CMAKE_GENERATOR} MATCHES "Xcode")
+-
+-	# earlier xcode has no bundled developer dir, no sense in getting xcode path from
+-	if(${XCODE_VERSION} VERSION_GREATER 4.2) 
+-		# reduce to XCode name without dp extension
+-		string(SUBSTRING "${XCODE_CHECK}" 14 6 DP_NAME) 
+-		if(${DP_NAME} MATCHES Xcode5)
+-			set(XCODE_VERSION 5)
+-		endif()
+-	endif()
+-
+-	##### cmake incompatibility with xcode  4.3 and higher #####
+-	if(${XCODE_VERSION} MATCHES '') # cmake fails due looking for xcode in the wrong path, thus will be empty var
+-		message(FATAL_ERROR "Xcode 4.3 and higher must be used with cmake 2.8-8 or higher")
+-	endif()
+-	### end cmake incompatibility with xcode 4.3 and higher ###
+-	
+-	if(${XCODE_VERSION} VERSION_EQUAL 4 OR ${XCODE_VERSION} VERSION_GREATER 4 AND ${XCODE_VERSION} VERSION_LESS 4.3)
+-		# Xcode 4 defaults to the Apple LLVM Compiler.
+-		# Override the default compiler selection because Blender only compiles with gcc up to xcode 4.2
+-		set(CMAKE_XCODE_ATTRIBUTE_GCC_VERSION "com.apple.compilers.llvmgcc42")
+-		message(STATUS "Setting compiler to: " ${CMAKE_XCODE_ATTRIBUTE_GCC_VERSION})
+-	endif()
+-else() # unix makefile generator does not fill XCODE_VERSION var, so we get it with a command
+-	execute_process(COMMAND xcodebuild -version OUTPUT_VARIABLE XCODE_VERS_BUILD_NR)
+-	string(SUBSTRING "${XCODE_VERS_BUILD_NR}" 6 3 XCODE_VERSION) # truncate away build-nr
+-	unset(XCODE_VERS_BUILD_NR)
+-endif()
+-
+-message(STATUS "Detected OS X ${OSX_SYSTEM} and Xcode ${XCODE_VERSION} at ${XCODE_BUNDLE}")
+-
+-if(${XCODE_VERSION} VERSION_LESS 4.3)
+-	# use guaranteed existing sdk
+-	set(CMAKE_OSX_SYSROOT /Developer/SDKs/MacOSX${OSX_SYSTEM}.sdk CACHE PATH "" FORCE)
+-else()
+-	# note: xcode-select path could be ambigous,
+-	# cause /Applications/Xcode.app/Contents/Developer or /Applications/Xcode.app would be allowed
+-	# so i use a selfcomposed bundlepath here  
+-	set(OSX_SYSROOT_PREFIX ${XCODE_BUNDLE}/Contents/Developer/Platforms/MacOSX.platform)
+-	message(STATUS "OSX_SYSROOT_PREFIX: " ${OSX_SYSROOT_PREFIX})
+-	set(OSX_DEVELOPER_PREFIX /Developer/SDKs/MacOSX${OSX_SYSTEM}.sdk) # use guaranteed existing sdk
+-	set(CMAKE_OSX_SYSROOT ${OSX_SYSROOT_PREFIX}/${OSX_DEVELOPER_PREFIX} CACHE PATH "" FORCE)
+-	if(${CMAKE_GENERATOR} MATCHES "Xcode")
+-		# to silence sdk not found warning, just overrides CMAKE_OSX_SYSROOT
+-		set(CMAKE_XCODE_ATTRIBUTE_SDKROOT macosx${OSX_SYSTEM})
+-	endif()
+-endif()
+-
+-if(OSX_SYSTEM MATCHES 10.9)
+-	# make sure syslibs and headers are looked up in sdk ( expecially for 10.9 openGL atm. )
+-	set(CMAKE_FIND_ROOT_PATH ${CMAKE_OSX_SYSROOT})
+-endif()
+-
+-if(WITH_CXX11)
+-	# 10.9 is our min. target, if you use higher sdk, weak linking happens
+-	if(CMAKE_OSX_DEPLOYMENT_TARGET)
+-		if(${CMAKE_OSX_DEPLOYMENT_TARGET} VERSION_LESS 10.9)
+-			message(STATUS "Setting deployment target to 10.9, lower versions are incompatible with WITH_CXX11")
+-			set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "" FORCE)
+-		endif()
+-	else()
+-		set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9" CACHE STRING "" FORCE)
+-	endif()
+-else()
+-	if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+-		# 10.6 is our min. target, if you use higher sdk, weak linking happens
+-		set(CMAKE_OSX_DEPLOYMENT_TARGET "10.6" CACHE STRING "" FORCE)
+-	endif()
+-endif()
+-
+-if(NOT ${CMAKE_GENERATOR} MATCHES "Xcode")
+-	# force CMAKE_OSX_DEPLOYMENT_TARGET for makefiles, will not work else ( cmake bug ? )
+-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+-	add_definitions("-DMACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+-endif()
+-
++# SPDX-License-Identifier: GPL-2.0-or-later
++# Host-native headless engine port; use the active SDK and architecture.
++set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
+ macro(apple_check_quicktime)
+-	# QuickTime framework is no longer available in SDK 10.12+
+-	if(WITH_CODEC_QUICKTIME AND ${OSX_SYSTEM} VERSION_GREATER 10.11)
+-		set(WITH_CODEC_QUICKTIME OFF CACHE BOOL "" FORCE)
+-		message(STATUS "QuickTime not supported by SDK ${OSX_SYSTEM}, disabling WITH_CODEC_QUICKTIME")
+-	endif()
++  set(WITH_CODEC_QUICKTIME OFF CACHE BOOL "" FORCE)
+ endmacro()
+-
+diff --git a/source/blender/editors/util/numinput.c b/source/blender/editors/util/numinput.c
+index 0f32409..548895e 100644
+--- a/source/blender/editors/util/numinput.c
++++ b/source/blender/editors/util/numinput.c
+@@ -478,9 +478,9 @@ bool handleNumInput(bContext *C, NumInput *n, const wmEvent *event)
+ 	/* At this point, our value has changed, try to interpret it with python (if str is not empty!). */
+ 	if (n->str[0]) {
+ 		const float val_prev = n->val[idx];
++		double val;
+ #ifdef WITH_PYTHON
+ 		Scene *sce = CTX_data_scene(C);
+-		double val;
+ 		char str_unit_convert[NUM_STR_REP_LEN * 6];  /* Should be more than enough! */
+ 		const char *default_unit = NULL;
+ 
+diff --git a/source/blender/render/intern/include/render_types.h b/source/blender/render/intern/include/render_types.h
+index f9942be..a61138c 100644
+--- a/source/blender/render/intern/include/render_types.h
++++ b/source/blender/render/intern/include/render_types.h
+@@ -142,7 +142,7 @@ struct Render {
+ 	/* read/write mutex, all internal code that writes to re->result must use a
+ 	 * write lock, all external code must use a read lock. internal code is assumed
+ 	 * to not conflict with writes, so no lock used for that */
+-	ThreadRWMutex resultmutex;
++	ThreadRWMutex *resultmutex;
+ 	
+ 	/* window size, display rect, viewplane */
+ 	int winx, winy;			/* buffer width and height with percentage applied
+@@ -193,7 +193,7 @@ struct Render {
+ 	struct Object *camera_override;
+ 	unsigned int lay, layer_override;
+ 	
+-	ThreadRWMutex partsmutex;
++	ThreadRWMutex *partsmutex;
+ 	ListBase parts;
+ 	
+ 	/* render engine */
+diff --git a/source/blender/render/intern/source/envmap.c b/source/blender/render/intern/source/envmap.c
+index 156b421..8fb5bc0 100644
+--- a/source/blender/render/intern/source/envmap.c
++++ b/source/blender/render/intern/source/envmap.c
+@@ -499,9 +499,9 @@ static void render_envmap(Render *re, EnvMap *env)
+ 			float *rect;
+ 
+ 			if (envre->result->do_exr_tile) {
+-				BLI_rw_mutex_lock(&envre->resultmutex, THREAD_LOCK_WRITE);
++				BLI_rw_mutex_lock(envre->resultmutex, THREAD_LOCK_WRITE);
+ 				render_result_exr_file_end(envre);
+-				BLI_rw_mutex_unlock(&envre->resultmutex);
++				BLI_rw_mutex_unlock(envre->resultmutex);
+ 			}
+ 
+ 			RenderLayer *rl = envre->result->layers.first;
+diff --git a/source/blender/render/intern/source/external_engine.c b/source/blender/render/intern/source/external_engine.c
+index a581f7b..b4a602e 100644
+--- a/source/blender/render/intern/source/external_engine.c
++++ b/source/blender/render/intern/source/external_engine.c
+@@ -435,13 +435,13 @@ rcti* RE_engine_get_current_tiles(Render *re, int *r_total_tiles, bool *r_needs_
+ 	rcti *tiles = tiles_static;
+ 	int allocation_size = BLENDER_MAX_THREADS;
+ 
+-	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_READ);
++	BLI_rw_mutex_lock(re->partsmutex, THREAD_LOCK_READ);
+ 
+ 	*r_needs_free = false;
+ 
+ 	if (re->engine && (re->engine->flag & RE_ENGINE_HIGHLIGHT_TILES) == 0) {
+ 		*r_total_tiles = 0;
+-		BLI_rw_mutex_unlock(&re->partsmutex);
++		BLI_rw_mutex_unlock(re->partsmutex);
+ 		return NULL;
+ 	}
+ 
+@@ -475,7 +475,7 @@ rcti* RE_engine_get_current_tiles(Render *re, int *r_total_tiles, bool *r_needs_
+ 			total_tiles++;
+ 		}
+ 	}
+-	BLI_rw_mutex_unlock(&re->partsmutex);
++	BLI_rw_mutex_unlock(re->partsmutex);
+ 	*r_total_tiles = total_tiles;
+ 	return tiles;
+ }
+@@ -546,7 +546,7 @@ bool RE_bake_engine(
+ 	engine->tile_y = 0;
+ 	engine->flag &= ~RE_ENGINE_RENDERING;
+ 
+-	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->partsmutex, THREAD_LOCK_WRITE);
+ 
+ 	/* re->engine becomes zero if user changed active render engine during render */
+ 	if (!persistent_data || !re->engine) {
+@@ -555,7 +555,7 @@ bool RE_bake_engine(
+ 	}
+ 
+ 	RE_parts_free(re);
+-	BLI_rw_mutex_unlock(&re->partsmutex);
++	BLI_rw_mutex_unlock(re->partsmutex);
+ 
+ 	if (BKE_reports_contain(re->reports, RPT_ERROR))
+ 		G.is_break = true;
+@@ -661,7 +661,7 @@ int RE_engine_render(Render *re, int do_all)
+ 	}
+ 
+ 	/* create render result */
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	if (re->result == NULL || !(re->r.scemode & R_BUTS_PREVIEW)) {
+ 		int savebuffers = RR_USE_MEM;
+ 
+@@ -672,7 +672,7 @@ int RE_engine_render(Render *re, int do_all)
+ 			savebuffers = RR_USE_EXR;
+ 		re->result = render_result_new(re, &re->disprect, 0, savebuffers, RR_ALL_LAYERS, RR_ALL_VIEWS);
+ 	}
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 	if (re->result == NULL) {
+ 		/* Clear UI drawing locks. */
+@@ -739,7 +739,7 @@ int RE_engine_render(Render *re, int do_all)
+ 
+ 	render_result_free_list(&engine->fullresult, engine->fullresult.first);
+ 
+-	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->partsmutex, THREAD_LOCK_WRITE);
+ 
+ 	/* re->engine becomes zero if user changed active render engine during render */
+ 	if (!persistent_data || !re->engine) {
+@@ -748,20 +748,20 @@ int RE_engine_render(Render *re, int do_all)
+ 	}
+ 
+ 	if (re->result->do_exr_tile) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_save_empty_result_tiles(re);
+ 		render_result_exr_file_end(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ 
+ 	if (re->r.scemode & R_EXR_CACHE_FILE) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_exr_file_cache_write(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ 
+ 	RE_parts_free(re);
+-	BLI_rw_mutex_unlock(&re->partsmutex);
++	BLI_rw_mutex_unlock(re->partsmutex);
+ 
+ 	if (BKE_reports_contain(re->reports, RPT_ERROR))
+ 		G.is_break = true;
+diff --git a/source/blender/render/intern/source/pipeline.c b/source/blender/render/intern/source/pipeline.c
+index 9ed1520..04c40da 100644
+--- a/source/blender/render/intern/source/pipeline.c
++++ b/source/blender/render/intern/source/pipeline.c
+@@ -314,7 +314,7 @@ Render *RE_GetRender(const char *name)
+ RenderResult *RE_AcquireResultRead(Render *re)
+ {
+ 	if (re) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_READ);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_READ);
+ 		return re->result;
+ 	}
+ 
+@@ -324,7 +324,7 @@ RenderResult *RE_AcquireResultRead(Render *re)
+ RenderResult *RE_AcquireResultWrite(Render *re)
+ {
+ 	if (re) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		return re->result;
+ 	}
+ 
+@@ -343,7 +343,7 @@ void RE_SwapResult(Render *re, RenderResult **rr)
+ void RE_ReleaseResult(Render *re)
+ {
+ 	if (re)
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ }
+ 
+ /* displist.c util.... */
+@@ -364,7 +364,7 @@ void RE_AcquireResultImageViews(Render *re, RenderResult *rr)
+ 	memset(rr, 0, sizeof(RenderResult));
+ 
+ 	if (re) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_READ);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_READ);
+ 
+ 		if (re->result) {
+ 			RenderLayer *rl;
+@@ -411,7 +411,7 @@ void RE_ReleaseResultImageViews(Render *re, RenderResult *rr)
+ 		if (rr) {
+ 			render_result_views_shallowdelete(rr);
+ 		}
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ }
+ 
+@@ -423,7 +423,7 @@ void RE_AcquireResultImage(Render *re, RenderResult *rr, const int view_id)
+ 	memset(rr, 0, sizeof(RenderResult));
+ 
+ 	if (re) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_READ);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_READ);
+ 
+ 		if (re->result) {
+ 			RenderLayer *rl;
+@@ -465,7 +465,7 @@ void RE_AcquireResultImage(Render *re, RenderResult *rr, const int view_id)
+ void RE_ReleaseResultImage(Render *re)
+ {
+ 	if (re)
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ }
+ 
+ /* caller is responsible for allocating rect in correct size! */
+@@ -503,8 +503,8 @@ Render *RE_NewRender(const char *name)
+ 		re = MEM_callocN(sizeof(Render), "new render");
+ 		BLI_addtail(&RenderGlobal.renderlist, re);
+ 		BLI_strncpy(re->name, name, RE_MAXNAME);
+-		BLI_rw_mutex_init(&re->resultmutex);
+-		BLI_rw_mutex_init(&re->partsmutex);
++		re->resultmutex = BLI_rw_mutex_alloc();
++		re->partsmutex = BLI_rw_mutex_alloc();
+ 		re->eval_ctx = DEG_evaluation_context_new(DAG_EVAL_RENDER);
+ 	}
+ 	
+@@ -541,8 +541,8 @@ void RE_FreeRender(Render *re)
+ 	if (re->engine)
+ 		RE_engine_free(re->engine);
+ 
+-	BLI_rw_mutex_end(&re->resultmutex);
+-	BLI_rw_mutex_end(&re->partsmutex);
++	BLI_rw_mutex_free(re->resultmutex);
++	BLI_rw_mutex_free(re->partsmutex);
+ 
+ 	BLI_freelistN(&re->r.layers);
+ 	BLI_freelistN(&re->r.views);
+@@ -773,7 +773,7 @@ void RE_InitState(Render *re, Render *source, RenderData *rd,
+ 	make_sample_tables(re);
+ 	
+ 	/* if preview render, we try to keep old result */
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 
+ 	if (re->r.scemode & (R_BUTS_PREVIEW|R_VIEWPORT_PREVIEW)) {
+ 		if (had_freestyle || (re->r.mode & R_EDGE_FRS)) {
+@@ -821,7 +821,7 @@ void RE_InitState(Render *re, Render *source, RenderData *rd,
+ 	/* ensure renderdatabase can use part settings correct */
+ 	RE_parts_clamp(re);
+ 
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 	
+ 	re->mblur_offs = re->field_offs = 0.f;
+ 	
+@@ -890,9 +890,9 @@ void RE_ChangeResolution(Render *re, int winx, int winy, rcti *disprect)
+ 	RE_parts_clamp(re);
+ 
+ 	if (re->result) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_rescale(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ }
+ 
+@@ -1087,7 +1087,7 @@ static void *do_part_thread(void *pa_v)
+ 		
+ 		/* we do actually write pixels, but don't allocate/deallocate anything,
+ 		 * so it is safe with other threads reading at the same time */
+-		BLI_rw_mutex_lock(&R.resultmutex, THREAD_LOCK_READ);
++		BLI_rw_mutex_lock(R.resultmutex, THREAD_LOCK_READ);
+ 		
+ 		/* merge too on break! */
+ 		if (R.result->do_exr_tile) {
+@@ -1103,7 +1103,7 @@ static void *do_part_thread(void *pa_v)
+ 			}
+ 		}
+ 		
+-		BLI_rw_mutex_unlock(&R.resultmutex);
++		BLI_rw_mutex_unlock(R.resultmutex);
+ 	}
+ 	
+ 	pa->status = PART_STATUS_READY;
+@@ -1306,21 +1306,21 @@ static void *do_render_thread(void *thread_v)
+ static void main_render_result_end(Render *re)
+ {
+ 	if (re->result->do_exr_tile) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_exr_file_end(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ 
+ 	if (re->r.scemode & R_EXR_CACHE_FILE) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_exr_file_cache_write(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ }
+ 
+ static void main_render_result_new(Render *re)
+ {
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 
+ 	/* first step; free the entire render result, make new, and/or prepare exr buffer saving */
+ 	if (re->result == NULL || !(re->r.scemode & (R_BUTS_PREVIEW|R_VIEWPORT_PREVIEW))) {
+@@ -1335,7 +1335,7 @@ static void main_render_result_new(Render *re)
+ 				(re->r.scemode & R_EXR_TILE_FILE) ? RR_USE_EXR : RR_USE_MEM, RR_ALL_LAYERS, RR_ALL_VIEWS);
+ 	}
+ 
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 	if (re->result) {
+ 		if (re->result->do_exr_tile) {
+@@ -1461,16 +1461,16 @@ static void threaded_tile_processor(Render *re)
+ 	BLI_thread_queue_free(workqueue);
+ 
+ 	if (re->result->do_exr_tile) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_save_empty_result_tiles(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ 
+ 	/* unset threadsafety */
+ 	g_break = 0;
+-	BLI_rw_mutex_lock(&re->partsmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->partsmutex, THREAD_LOCK_WRITE);
+ 	RE_parts_free(re);
+-	BLI_rw_mutex_unlock(&re->partsmutex);
++	BLI_rw_mutex_unlock(re->partsmutex);
+ 	re->viewplane = viewplane; /* restore viewplane, modified by pano render */
+ }
+ 
+@@ -1690,10 +1690,10 @@ static void do_render_blur_3d(Render *re)
+ 	}
+ 	
+ 	/* swap results */
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	render_result_free(re->result);
+ 	re->result = rres;
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 	
+ 	re->mblur_offs = 0.0f;
+ 	re->i.curblur = 0;   /* stats */
+@@ -1769,10 +1769,10 @@ static void do_render_fields_3d(Render *re)
+ 	else
+ 		do_render_3d(re);
+ 
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	rr1 = re->result;
+ 	re->result = NULL;
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 	
+ 	/* second field */
+ 	if (!re->test_break(re->tbh)) {
+@@ -1801,7 +1801,7 @@ static void do_render_fields_3d(Render *re)
+ 	re->disprect.ymin *= 2;
+ 	re->disprect.ymax *= 2;
+ 
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	re->result = render_result_new(re, &re->disprect, 0, RR_USE_MEM, RR_ALL_LAYERS, RR_ALL_VIEWS);
+ 
+ 	if (rr2) {
+@@ -1820,7 +1820,7 @@ static void do_render_fields_3d(Render *re)
+ 	/* weak... the display callback wants an active renderlayer pointer... */
+ 	re->result->renlay = render_get_active_layer(re, re->result);
+ 
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 	re->display_update(re->duh, re->result, NULL);
+ }
+@@ -1847,7 +1847,7 @@ static void render_result_uncrop(Render *re)
+ 			const rcti orig_disprect = re->disprect;
+ 			const int  orig_rectx = re->rectx, orig_recty = re->recty;
+ 
+-			BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++			BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 
+ 			/* sub-rect for merge call later on */
+ 			re->result->tilerect = re->disprect;
+@@ -1866,7 +1866,7 @@ static void render_result_uncrop(Render *re)
+ 			/* weak... the display callback wants an active renderlayer pointer... */
+ 			re->result->renlay = render_get_active_layer(re, re->result);
+ 
+-			BLI_rw_mutex_unlock(&re->resultmutex);
++			BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 			re->display_init(re->dih, re->result);
+ 			re->display_update(re->duh, re->result, NULL);
+@@ -2376,13 +2376,13 @@ static void do_merge_fullsample(Render *re, bNodeTree *ntree)
+ 
+ 				if (re1 && (re1->r.scemode & R_FULL_SAMPLE)) {
+ 					if (sample) {
+-						BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++						BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 						render_result_exr_file_read_sample(re1, sample);
+ #ifdef WITH_FREESTYLE
+ 						if (re1->r.mode & R_EDGE_FRS)
+ 							composite_freestyle_renders(re1, sample);
+ #endif
+-						BLI_rw_mutex_unlock(&re->resultmutex);
++						BLI_rw_mutex_unlock(re->resultmutex);
+ 						render_result_uncrop(re1);
+ 					}
+ 					ntreeCompositTagRender(re1->scene); /* ensure node gets exec to put buffers on stack */
+@@ -2452,12 +2452,12 @@ static void do_merge_fullsample(Render *re, bNodeTree *ntree)
+ 		}
+ 
+ 		/* store the final result */
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		rv = RE_RenderViewGetById(re->result, nr);
+ 		if (rv->rectf)
+ 			MEM_freeN(rv->rectf);
+ 		rv->rectf = rectf;
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ 	
+ 	/* clear interaction callbacks */
+@@ -2566,7 +2566,7 @@ static void do_render_composite_fields_blur_3d(Render *re)
+ 		re->i.cfra = re->r.cfra;
+ 
+ 		/* ensure new result gets added, like for regular renders */
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		
+ 		render_result_free(re->result);
+ 		if ((re->r.mode & R_CROP) == 0) {
+@@ -2574,7 +2574,7 @@ static void do_render_composite_fields_blur_3d(Render *re)
+ 		}
+ 		re->result = render_result_new(re, &re->disprect, 0, RR_USE_MEM, RR_ALL_LAYERS, RR_ALL_VIEWS);
+ 
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 		
+ 		/* scene render process already updates animsys */
+ 		update_newframe = 1;
+@@ -2582,9 +2582,9 @@ static void do_render_composite_fields_blur_3d(Render *re)
+ 	
+ 	/* swap render result */
+ 	if (re->r.scemode & R_SINGLE_LAYER) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_single_layer_end(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ 	
+ 	if (!re->test_break(re->tbh)) {
+@@ -2745,13 +2745,13 @@ static void do_render_seq(Render *re)
+ 
+ 	rr = re->result;
+ 
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	render_result_views_new(rr, &re->r);
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 	for (view_id = 0; view_id < tot_views; view_id++) {
+ 		RenderView *rv = RE_RenderViewGetById(rr, view_id);
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 
+ 		if (ibuf_arr[view_id]) {
+ 			/* copy ibuf into combined pixel rect */
+@@ -2775,7 +2775,7 @@ static void do_render_seq(Render *re)
+ 			render_result_rect_fill_zero(rr, view_id);
+ 		}
+ 
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 		/* would mark display buffers as invalid */
+ 		RE_SetActiveRenderView(re, rv->name);
+@@ -3200,9 +3200,9 @@ static int render_initialize_from_main(Render *re, RenderData *rd, Main *bmain,
+ 	}
+ 	
+ 	if (srl || scene->r.scemode & R_SINGLE_LAYER) {
+-		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++		BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 		render_result_single_layer_begin(re);
+-		BLI_rw_mutex_unlock(&re->resultmutex);
++		BLI_rw_mutex_unlock(re->resultmutex);
+ 	}
+ 	
+ 	RE_InitState(re, NULL, &scene->r, srl, winx, winy, &disprect);
+@@ -3883,9 +3883,9 @@ bool RE_ReadRenderResult(Scene *scene, Scene *scenode)
+ 	re->scene = scene;
+ 	re->scene_color_manage = BKE_scene_check_color_management_enabled(scene);
+ 	
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	success = render_result_exr_file_cache_read(re);
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 	render_result_uncrop(re);
+ 
+diff --git a/source/blender/render/intern/source/sss.c b/source/blender/render/intern/source/sss.c
+index 26ca3ad..40782a5 100644
+--- a/source/blender/render/intern/source/sss.c
++++ b/source/blender/render/intern/source/sss.c
+@@ -866,7 +866,7 @@ static void sss_create_tree_mat(Render *re, Material *mat)
+ 	 * setting them back, maybe we need to create our own Render? */
+ 
+ 	/* do SSS preprocessing render */
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	rr= re->result;
+ 	osa= re->osa;
+ 	osaflag= re->r.mode & R_OSA;
+@@ -881,16 +881,16 @@ static void sss_create_tree_mat(Render *re, Material *mat)
+ 
+ 	if (!(re->r.scemode & (R_BUTS_PREVIEW|R_VIEWPORT_PREVIEW)))
+ 		re->result= NULL;
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 	RE_TileProcessor(re);
+ 	
+-	BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
++	BLI_rw_mutex_lock(re->resultmutex, THREAD_LOCK_WRITE);
+ 	if (!(re->r.scemode & (R_BUTS_PREVIEW|R_VIEWPORT_PREVIEW))) {
+ 		RE_FreeRenderResult(re->result);
+ 		re->result= rr;
+ 	}
+-	BLI_rw_mutex_unlock(&re->resultmutex);
++	BLI_rw_mutex_unlock(re->resultmutex);
+ 
+ 	re->i.partsdone= partsdone;
+ 	re->sss_mat= NULL;
+diff --git a/source/creator/CMakeLists.txt b/source/creator/CMakeLists.txt
+index b8d3d1e..dba7920 100644
+--- a/source/creator/CMakeLists.txt
++++ b/source/creator/CMakeLists.txt
+@@ -1134,3 +1134,16 @@ if(WIN32 AND NOT WITH_PYTHON_MODULE)
+ 		endif()
+ 	endif()
+ endif()
++
++# Full Internal host library; symbols are isolated from modern Blender's DNA/BKE.
++add_library(blender_internal_full SHARED ${SRC} ${CMAKE_SOURCE_DIR}/../full/engine.c)
++add_dependencies(blender_internal_full makesdna)
++target_link_libraries(blender_internal_full ${BLENDER_SORTED_LIBS})
++setup_liblinks(blender_internal_full)
++set_target_properties(blender_internal_full PROPERTIES
++  C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden
++  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
++if(APPLE)
++  set_property(TARGET blender_internal_full APPEND_STRING PROPERTY LINK_FLAGS
++    " -Wl,-exported_symbols_list,${CMAKE_SOURCE_DIR}/../full/exports.txt")
++endif()
+diff --git a/source/creator/creator.c b/source/creator/creator.c
+index a59a45f..0a42040 100644
+--- a/source/creator/creator.c
++++ b/source/creator/creator.c
+@@ -329,7 +329,7 @@ int main(
+ 
+ 	main_callback_setup();
+ 	
+-#if defined(__APPLE__) && !defined(WITH_PYTHON_MODULE)
++#if defined(__APPLE__) && !defined(WITH_PYTHON_MODULE) && !defined(WITH_HEADLESS)
+ 	/* patch to ignore argument finder gives us (pid?) */
+ 	if (argc == 2 && STREQLEN(argv[1], "-psn_", 5)) {
+ 		extern int GHOST_HACK_getFirstFile(char buf[]);

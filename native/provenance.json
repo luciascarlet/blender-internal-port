@@ -1,0 +1,81 @@
+{
+  "tag": "v2.79b",
+  "commit": "f4dc9f9d68bddaa206b692e1d077d1a1f2bb1528",
+  "files": {
+    "source/blender/render/intern/source/shadeoutput.c": {
+      "sha256": "2a3e278efaa22cae9c98d11b9661d4ddee7904722ca848202285bef2e042830c",
+      "functions": [
+        {
+          "name": "fresnel_fac",
+          "line": 433,
+          "sha256": "a007760577e37cc34d0a259e8b59311f597c0ff4d74109918f2a15a00ad9bb13"
+        },
+        {
+          "name": "spec",
+          "line": 548,
+          "sha256": "ef07b1c2f99cce238496cf0fe2f409ce49d5b37bcc328db9955df18473301ee3"
+        },
+        {
+          "name": "Phong_Spec",
+          "line": 588,
+          "sha256": "393414da6cf90c08cfb9de0bb9524f8135c074dfc6303b11b016aeb99414c90b"
+        },
+        {
+          "name": "CookTorr_Spec",
+          "line": 609,
+          "sha256": "463b7cc15a4a3392d50e2a2480bde26a0237edc292b037d841f2c8b93c47cc75"
+        },
+        {
+          "name": "Blinn_Spec",
+          "line": 633,
+          "sha256": "ceeabb15a3a0da429265f1ec65efdde9396b23c6eee8bf7c9461065aa30ae280"
+        },
+        {
+          "name": "Toon_Spec",
+          "line": 687,
+          "sha256": "a291d29fc21fead53da268742d33eb90a9648e6a63b30064e75ecab4aa6f9a5b"
+        },
+        {
+          "name": "WardIso_Spec",
+          "line": 711,
+          "sha256": "df43b07bc9ef68be954daf9a6477cf64288522324e4c2921830024756948b874"
+        },
+        {
+          "name": "Toon_Diff",
+          "line": 743,
+          "sha256": "bdfa52b6aa087ebb62f758a00dcf91531f69f88276902a439b70488c9efe9390"
+        },
+        {
+          "name": "OrenNayar_Diff",
+          "line": 762,
+          "sha256": "1ad4c42bd011f920095651b6d6964c0c0980cf4a6fec702288c7732f66d6847e"
+        },
+        {
+          "name": "Minnaert_Diff",
+          "line": 822,
+          "sha256": "fbbae27e45ed730aadcb9bf75afbb4703c1131d1a273a00737d50ac68eda1e9e"
+        },
+        {
+          "name": "Fresnel_Diff",
+          "line": 843,
+          "sha256": "e73f843242c2ffb42a92117baf5741c24795c06c10a401d20f7d1878e50688a9"
+        }
+      ]
+    },
+    "source/blender/blenlib/intern/math_geom.c": {
+      "sha256": "f741b3ed783249ef430a6db3307759741691a2ea16f25b1ee98440abec2988a7",
+      "functions": [
+        {
+          "name": "isect_ray_tri_watertight_v3_precalc",
+          "line": 1404,
+          "sha256": "68d1073cbb489fadce6487d3fc057927b12a09cd7cf25560fe23b59a1bb1c79c"
+        },
+        {
+          "name": "isect_ray_tri_watertight_v3",
+          "line": 1430,
+          "sha256": "a136eb9357c7716f5e6f3702fe62cbd2fac792f3f377da86d533a7e259d614d6"
+        }
+      ]
+    }
+  }
+}
