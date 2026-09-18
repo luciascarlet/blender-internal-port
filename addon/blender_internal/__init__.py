@@ -2,7 +2,7 @@
 bl_info = {
     'name': 'Blender Internal — Experimental Port',
     'author': 'Blender authors; modern adapter contributors',
-    'version': (0, 2, 0),
+    'version': (0, 2, 6),
     'blender': (5, 2, 0),
     'location': 'Render engine selector; Render, Material and Light properties',
     'description': 'Original Blender Internal scanlines, legacy nodes and ray tracing in modern Blender',
@@ -14,7 +14,7 @@ import math
 import bpy
 from bpy.props import CollectionProperty, BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, IntProperty, PointerProperty, StringProperty
 from mathutils import Vector
-from . import native, legacy_ui, full_native, full_export, legacy_import
+from . import native, legacy_ui, full_native, full_export, legacy_import, material_ui, render_settings, render_ui, viewport
 from .passes import PASSES
 
 ENGINE = 'BLENDER_INTERNAL_PORT'
@@ -26,6 +26,8 @@ class ClassicMaterial(bpy.types.PropertyGroup):
     use_legacy_settings: BoolProperty(name='Use Full Legacy Material Controls', default=False)
     legacy: PointerProperty(type=legacy_ui.LegacyMaterial)
     node_tree: PointerProperty(name='Legacy Nodes', type=bpy.types.NodeTree, poll=lambda self, tree: tree.bl_idname == legacy_ui.TREE)
+    use_nodes: BoolProperty(name='Use Nodes', default=True, description='Render this material using its Blender Internal node tree')
+    ramp_storage: PointerProperty(type=bpy.types.NodeTree)
     color: FloatVectorProperty(name='Diffuse Color', subtype='COLOR', size=3, min=0, max=1, default=(0.8, 0.8, 0.8))
     specular_color: FloatVectorProperty(name='Specular Color', subtype='COLOR', size=3, min=0, max=1, default=(1, 1, 1))
     diffuse_shader: EnumProperty(name='Diffuse', items=DIFFUSE, default='0')
@@ -45,15 +47,20 @@ class ClassicMaterial(bpy.types.PropertyGroup):
     shadeless: BoolProperty(name='Shadeless', default=False)
 
 class ClassicScene(bpy.types.PropertyGroup):
+    __annotations__ = dict(render_settings.PROPERTIES)
     source: EnumProperty(name='Scene Source', items=[('MODERN', 'Current Scene', 'Render evaluated modern geometry and editable legacy materials'),
                                                    ('ARCHIVE', 'Original Legacy File', 'Render the original scene, animation, particles and nodes from a 2.79 blend file')], default='MODERN')
     archive_path: StringProperty(name='Legacy File', subtype='FILE_PATH')
     archive_scene: StringProperty(name='Scene Name', description='Empty uses the active scene stored in the original file')
     use_legacy_settings: BoolProperty(name='Full Legacy Render Settings', default=False)
+    override_archive_render: BoolProperty(name='Override File Render Settings', default=False,
+        description='Apply the settings below to the original scene; load its settings first to preserve its starting appearance')
     legacy: PointerProperty(type=legacy_ui.LegacyRender)
     use_legacy_world: BoolProperty(name='Full Legacy World Settings', default=False)
     world: PointerProperty(type=legacy_ui.LegacyWorld)
     backend: EnumProperty(name='Backend', items=[('FULL', 'Full Legacy Renderer', 'Original scanlines, nodes, reflections and refraction'), ('KERNEL', 'Initial Kernel Prototype', 'Initial comparison renderer')], default='FULL')
+    viewport_resolution: IntProperty(name='Resolution', description='Percentage of viewport pixels rendered after refinement', default=100, min=10, max=100, subtype='PERCENTAGE')
+    viewport_pause: BoolProperty(name='Pause Preview', default=False)
     samples: EnumProperty(name='Legacy AA Samples', items=[('1', 'Off', ''), ('2', '5', ''), ('3', '8', ''), ('4', '16', '')], default='2')
     ambient: FloatProperty(name='Ambient Fill', min=0, max=1, default=0.05)
     shadows: BoolProperty(name='Ray Shadows', default=True)
@@ -186,6 +193,27 @@ class InternalEngine(bpy.types.RenderEngine):
     bl_use_preview = False
     bl_use_shading_nodes = False
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.viewport = None
+
+    def __del__(self):
+        if getattr(self, 'viewport', None) is not None:
+            self.viewport.close()
+        destructor = getattr(super(), '__del__', None)
+        if destructor is not None:
+            destructor()
+
+    def view_update(self, context, depsgraph):
+        if self.viewport is None:
+            self.viewport = viewport.Viewport(self)
+        self.viewport.update(context, depsgraph)
+
+    def view_draw(self, context, depsgraph):
+        if self.viewport is None:
+            self.viewport = viewport.Viewport(self)
+        self.viewport.draw(context, depsgraph)
+
     def update_render_passes(self, scene, view_layer):
         self.register_pass(scene, view_layer, 'Combined', 4, 'RGBA', 'COLOR')
         if scene.classic_internal.backend == 'FULL':
@@ -196,7 +224,8 @@ class InternalEngine(bpy.types.RenderEngine):
 
     def render(self, depsgraph):
         if depsgraph.scene_eval.classic_internal.backend == 'FULL':
-            return self.render_full(depsgraph)
+            with viewport.final_render():
+                return self.render_full(depsgraph)
         handle = None
         lib = None
         try:
@@ -258,8 +287,7 @@ class InternalEngine(bpy.types.RenderEngine):
                         raise RuntimeError('Choose an original Blender Internal .blend file')
                     host.check(host.lib.bi_full_load(path.encode()))
                     host.handle = host.check(host.lib.bi_full_scene_current(scene.classic_internal.archive_scene.encode()))
-                    host.set(host.handle, 'render.use_compositing', False)
-                    host.set(host.handle, 'render.use_sequencer', False)
+                    render_settings.export(host, scene, archive=True)
                     full_export.export_region_passes(host, scene, depsgraph.view_layer)
                 else:
                     host = full_export.export_scene(depsgraph, self)
@@ -282,7 +310,7 @@ class InternalEngine(bpy.types.RenderEngine):
                 raise
 
 
-class CLASSIC_PT_render(bpy.types.Panel):
+class ClassicPanel:
     bl_label = 'Blender Internal Port'
     bl_idname = 'CLASSIC_PT_render'
     bl_space_type = 'PROPERTIES'
@@ -293,35 +321,43 @@ class CLASSIC_PT_render(bpy.types.Panel):
     def poll(cls, context):
         return context.engine == ENGINE
 
+
+class CLASSIC_PT_render(ClassicPanel, bpy.types.Panel):
+    bl_label = 'Blender Internal Port'
+    bl_idname = 'CLASSIC_PT_render'
+
+    bl_order = 0
+
     def draw(self, context):
         layout = self.layout
-        layout.label(text='Original 2.79b rendering pipeline', icon='RENDER_STILL')
-        for name in ('backend', 'use_legacy_settings'):
-            layout.prop(context.scene.classic_internal, name)
         p = context.scene.classic_internal
+        row = layout.row(align=True)
+        row.operator('render.render', text='Render', icon='RENDER_STILL')
+        row.operator('render.render', text='Animation', icon='RENDER_ANIMATION').animation = True
+        layout.prop(context.scene.render, 'use_lock_interface')
+        layout.prop(p, 'backend')
+        if p.backend == 'KERNEL':
+            for name in ('samples', 'ambient', 'shadows'):
+                layout.prop(p, name)
+            layout.prop(context.scene.render, 'film_transparent')
+            return
         layout.prop(p, 'source')
         if p.source == 'ARCHIVE':
             layout.prop(p, 'archive_path')
             layout.prop(p, 'archive_scene')
-            layout.label(text='Original file data; current frame and output size')
-            return
-        if p.use_legacy_settings:
-            for name in ('use_antialiasing', 'antialiasing_samples', 'pixel_filter_type', 'filter_size',
-                         'use_shadows', 'use_raytrace', 'use_sss', 'use_textures', 'raytrace_method',
-                         'use_edge_enhance', 'edge_threshold', 'edge_color', 'alpha_mode', 'threads_mode', 'threads'):
-                layout.prop(p.legacy, name)
+            layout.operator('render.internal_load_settings', icon='FILE_REFRESH')
+            layout.prop(p, 'override_archive_render')
+            if not p.override_archive_render:
+                layout.label(text='Using render settings stored in the file', icon='INFO')
+                layout.label(text='Load settings to inspect and edit them.')
         else:
-            for name in ('samples', 'ambient', 'shadows'):
-                layout.prop(p, name)
-        layout.prop(context.scene.render, 'film_transparent')
-        layout.operator('import_scene.blender_internal')
-        if context.scene.world:
-            layout.prop(context.scene.world, 'color', text='Horizon Color')
+            layout.operator('import_scene.blender_internal')
 
 
-class CLASSIC_PT_material(CLASSIC_PT_render):
+class CLASSIC_PT_material(ClassicPanel, bpy.types.Panel):
     bl_label = 'Classic Material'
     bl_idname = 'CLASSIC_PT_material'
+    bl_order = -50
     bl_context = 'material'
 
     @classmethod
@@ -331,40 +367,20 @@ class CLASSIC_PT_material(CLASSIC_PT_render):
     def draw(self, context):
         layout = self.layout
         p = context.material.classic_internal
-        layout.prop(p, 'node_tree')
-        if not p.node_tree:
-            layout.operator('material.internal_new_tree')
-        layout.prop(p, 'use_legacy_settings')
-        if p.use_legacy_settings:
-            for prop in legacy_ui.SCHEMA['material']:
-                if hasattr(p.legacy, prop['id']):
-                    layout.prop(p.legacy, prop['id'])
-            return
-        for name in ('color', 'diffuse_shader', 'diffuse_intensity'):
-            layout.prop(p, name)
-        if p.diffuse_shader == '1':
-            layout.prop(p, 'roughness')
-        elif p.diffuse_shader == '3':
-            layout.prop(p, 'darkness')
-        elif p.diffuse_shader in ('2', '4'):
-            layout.prop(p, 'diffuse_size')
-            layout.prop(p, 'diffuse_smooth')
-        for name in ('specular_color', 'specular_shader', 'specular_intensity'):
-            layout.prop(p, name)
-        if p.specular_shader in ('0', '1', '2'):
-            layout.prop(p, 'hardness')
-        if p.specular_shader == '2':
-            layout.prop(p, 'ior')
-        if p.specular_shader == '3':
-            layout.prop(p, 'specular_size')
-            layout.prop(p, 'specular_smooth')
-        if p.specular_shader == '4':
-            layout.prop(p, 'slope')
-        layout.prop(p, 'emission')
-        layout.prop(p, 'shadeless')
+        if context.scene.classic_internal.source == 'ARCHIVE':
+            layout.label(text='Original file mode ignores scene edits', icon='INFO')
+            layout.prop(context.scene.classic_internal, 'source')
+        if context.scene.classic_internal.backend == 'KERNEL':
+            layout.label(text='Use Full Legacy Renderer for nodes and effects', icon='INFO')
+            layout.prop(context.scene.classic_internal, 'backend')
+        layout.template_ID(p, 'node_tree', new='material.internal_new_tree')
+        if p.node_tree:
+            layout.prop(p, 'use_nodes')
+            layout.operator('material.internal_edit_nodes', icon='NODETREE')
+        layout.prop(p.legacy, 'type', text='Material Type')
 
 
-class CLASSIC_PT_light(CLASSIC_PT_render):
+class CLASSIC_PT_light(ClassicPanel, bpy.types.Panel):
     bl_label = 'Classic Light'
     bl_idname = 'CLASSIC_PT_light'
     bl_context = 'data'
@@ -395,7 +411,7 @@ class CLASSIC_PT_light(CLASSIC_PT_render):
             if data.shape == 'RECTANGLE':
                 layout.prop(data, 'size_y')
 
-class CLASSIC_PT_world(CLASSIC_PT_render):
+class CLASSIC_PT_world(ClassicPanel, bpy.types.Panel):
     bl_label = 'Legacy World, Ambient Occlusion and Mist'
     bl_idname = 'CLASSIC_PT_world'
     bl_context = 'world'
@@ -416,39 +432,24 @@ class CLASSIC_PT_world(CLASSIC_PT_render):
             self.layout.prop(p, 'ambient')
 
 
-class CLASSIC_PT_raytracing(CLASSIC_PT_material):
-    bl_label = 'Legacy Ray Tracing and Surface Effects'
-    bl_idname = 'CLASSIC_PT_raytracing'
-
-    def draw(self, context):
-        p = context.material.classic_internal.legacy
-        for name in ('raytrace_mirror', 'raytrace_transparency', 'subsurface_scattering'):
-            box = self.layout.box()
-            box.label(text=name.replace('_', ' ').title())
-            for prop in legacy_ui.SCHEMA['nested'][name]:
-                if hasattr(getattr(p, name), prop['id']):
-                    box.prop(getattr(p, name), prop['id'])
-
-
-class CLASSIC_PT_textures(CLASSIC_PT_material):
-    bl_label = 'Legacy Texture Slots'
+class CLASSIC_PT_textures(material_ui.MaterialPanel, bpy.types.Panel):
+    bl_label = 'Texture Slots'
     bl_idname = 'CLASSIC_PT_textures'
+    bl_order = 6
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
-        self.layout.operator('material.internal_texture_slot')
+        self.layout.operator('material.internal_texture_slot', icon='ADD').remove = -1
         for index, slot in enumerate(context.material.classic_internal.texture_slots):
-            box = self.layout.box()
-            row = box.row()
-            row.prop(slot, 'enabled')
-            op = row.operator('material.internal_texture_slot', text='', icon='X')
+            head, body = self.layout.panel('internal_slot_' + str(index), default_closed=False)
+            head.prop(slot, 'enabled', text='')
+            head.label(text=slot.texture.name if slot.texture else 'Empty Texture Slot')
+            op = head.operator('material.internal_texture_slot', text='', icon='X')
             op.remove = index
-            box.prop(slot, 'texture')
-            if slot.texture:
-                for prop in legacy_ui.SCHEMA['texture_slot']:
-                    if hasattr(slot.settings, prop['id']):
-                        box.prop(slot.settings, prop['id'])
+            if body:
+                material_ui.draw_texture(body, slot, str(index))
 
-class CLASSIC_PT_passes(CLASSIC_PT_render):
+class CLASSIC_PT_passes(ClassicPanel, bpy.types.Panel):
     bl_label = 'Legacy Render Passes'
     bl_idname = 'CLASSIC_PT_passes'
     bl_context = 'view_layer'
@@ -459,21 +460,29 @@ class CLASSIC_PT_passes(CLASSIC_PT_render):
 
 
 CLASSES = (ClassicMaterial, ClassicScene, ClassicLight, ClassicLayer, InternalEngine,
-           CLASSIC_PT_render, CLASSIC_PT_material, CLASSIC_PT_light, CLASSIC_PT_world, CLASSIC_PT_raytracing, CLASSIC_PT_textures, CLASSIC_PT_passes)
+           CLASSIC_PT_render, CLASSIC_PT_material, CLASSIC_PT_light, CLASSIC_PT_world, CLASSIC_PT_textures, CLASSIC_PT_passes, *material_ui.CLASSES, *render_ui.CLASSES)
 _compat_panels = []
 
 def register():
     legacy_ui.register()
     for cls in CLASSES:
+        legacy_ui.add_update_callbacks(cls)
         bpy.utils.register_class(cls)
     bpy.types.Material.classic_internal = PointerProperty(type=ClassicMaterial)
     bpy.types.Scene.classic_internal = PointerProperty(type=ClassicScene)
     bpy.types.Light.classic_internal = PointerProperty(type=ClassicLight)
     bpy.types.ViewLayer.classic_internal = PointerProperty(type=ClassicLayer)
     legacy_import.register()
-    # Only generic output/camera panels; avoid presenting unsupported engine features.
+    viewport.register()
+    # Reuse Blender's material slots, assignment, datablock and output controls.
     for name in ('RENDER_PT_context', 'RENDER_PT_color_management', 'DATA_PT_lens', 'DATA_PT_camera',
-                 'DATA_PT_camera_display', 'RENDER_PT_output', 'RENDER_PT_format', 'RENDER_PT_frame_range'):
+                 'DATA_PT_camera_display', 'RENDER_PT_output', 'RENDER_PT_format', 'RENDER_PT_frame_range',
+                 'MATERIAL_PT_custom_props',
+                 'MATERIAL_PT_animation', 'RENDER_PT_output_color_management',
+                 'RENDER_PT_encoding', 'RENDER_PT_encoding_video', 'RENDER_PT_encoding_audio',
+                 'RENDER_PT_time_stretching', 'RENDER_PT_post_processing', 'RENDER_PT_stamp', 'RENDER_PT_stamp_note', 'RENDER_PT_stamp_burn',
+                 'RENDER_PT_color_management_working_space', 'RENDER_PT_color_management_advanced',
+                 'RENDER_PT_color_management_curves', 'RENDER_PT_color_management_white_balance'):
         panel = getattr(bpy.types, name, None)
         if panel and hasattr(panel, 'COMPAT_ENGINES') and ENGINE not in panel.COMPAT_ENGINES:
             panel.COMPAT_ENGINES.add(ENGINE)
@@ -481,6 +490,7 @@ def register():
 
 
 def unregister():
+    viewport.unregister()
     legacy_import.unregister()
     for panel in _compat_panels:
         panel.COMPAT_ENGINES.discard(ENGINE)
