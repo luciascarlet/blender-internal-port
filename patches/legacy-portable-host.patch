@@ -1,0 +1,32 @@
+diff --git a/build_files/cmake/platform/platform_win32.cmake b/build_files/cmake/platform/platform_win32.cmake
+--- a/build_files/cmake/platform/platform_win32.cmake
++++ b/build_files/cmake/platform/platform_win32.cmake
+@@ -20,6 +20,11 @@
+ 
+ # Libraries configuration for Windows.
+ 
++if(INTERNAL_DEPS_ROOT)
++  include("${CMAKE_SOURCE_DIR}/../full/platform_windows.cmake")
++  return()
++endif()
++
+ add_definitions(-DWIN32)
+ 
+ if(MSVC)
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1770,4 +1770,13 @@
+ if(0)
+ 	print_all_vars()
+ endif()
+ 
++
++# Keep the host DLL path independent of the chosen CMake generator.
++set_target_properties(blender_internal_full PROPERTIES
++  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
++  RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib)
++if(UNIX AND NOT APPLE)
++  set_property(TARGET blender_internal_full APPEND_STRING PROPERTY LINK_FLAGS
++    " -Wl,--version-script=${CMAKE_SOURCE_DIR}/../full/exports.map -Wl,-Bsymbolic -Wl,--no-undefined")
++endif()

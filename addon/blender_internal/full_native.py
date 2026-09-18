@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Serialized, versioned boundary to the complete legacy renderer."""
 import ctypes as C
+import os
 from pathlib import Path
 import sys
 import threading
@@ -9,16 +10,22 @@ LOCK = threading.RLock()
 CANCEL = C.CFUNCTYPE(C.c_int, C.c_void_p)
 PROGRESS = C.CFUNCTYPE(None, C.c_void_p, C.c_float)
 _library = None
+_dll_directory = None
 
 def load():
-    global _library
+    global _library, _dll_directory
     if _library is not None:
         return _library
-    name = 'libblender_internal_full.dylib' if sys.platform == 'darwin' else 'libblender_internal_full.so'
+    name = ('blender_internal_full_v2.dll' if sys.platform == 'win32' else
+            'libblender_internal_full_v2.dylib' if sys.platform == 'darwin' else
+            'libblender_internal_full_v2.so')
     path = Path(__file__).parent / name
     # Development builds use the same library that the package will ship.
     if not path.exists():
-        path = Path(__file__).resolve().parents[2] / 'build-full/lib' / name
+        path = Path(__file__).resolve().parents[2] / 'build-full/lib' / name.replace('_v2', '')
+    if sys.platform == 'win32':
+        # Keep the handle alive; the packaged pthreads DLL lives beside the engine.
+        _dll_directory = os.add_dll_directory(str(path.parent))
     lib = C.CDLL(str(path))
     prototypes = {
         'bi_full_abi_version': (C.c_int, []),
@@ -54,6 +61,9 @@ def load():
         'bi_full_image': (C.c_int, [C.c_char_p, C.c_int, C.c_int, C.POINTER(C.c_float)]),
         'bi_full_image_bytes': (C.c_int, [C.c_char_p, C.c_int, C.c_int, C.POINTER(C.c_ubyte), C.c_int]),
         'bi_full_texture_slot': (C.c_int, [C.c_int, C.c_int, C.c_int]),
+        'bi_full_preview_begin': (C.c_int, [C.c_int, C.c_int, C.c_int, C.POINTER(C.c_float), C.POINTER(C.c_float), C.c_float, C.c_float, C.c_int]),
+        'bi_full_preview_step': (C.c_int, [C.c_int, C.c_int]),
+        'bi_full_preview_end': (None, []),
         'bi_full_render': (C.c_int, [C.c_int, C.c_int, C.c_int]),
         'bi_full_result': (C.c_int, [C.POINTER(C.c_float), C.c_uint64, C.POINTER(C.c_int), C.POINTER(C.c_int)]),
         'bi_full_pass': (C.c_int, [C.c_char_p, C.POINTER(C.c_float), C.c_uint64, C.POINTER(C.c_int), C.POINTER(C.c_int), C.POINTER(C.c_int)]),
@@ -108,14 +118,40 @@ class Scene:
         self.lib.bi_full_callbacks(cancel, progress, None)
         try:
             self.check(self.lib.bi_full_render(frame, width, height))
-            w, h = C.c_int(), C.c_int()
-            self.check(self.lib.bi_full_result(None, 0, C.byref(w), C.byref(h)))
-            pixels = np.empty((h.value*w.value, 4), dtype=np.float32)
-            self.check(self.lib.bi_full_result(pixels.ctypes.data_as(C.POINTER(C.c_float)),
-                                              pixels.size, C.byref(w), C.byref(h)))
-            return pixels, w.value, h.value
+            return self.result()
         finally:
             # Native renderer must not retain dead Python callbacks.
+            self.lib.bi_full_callbacks(CANCEL(), PROGRESS(), None)
+
+    def result(self):
+        import numpy as np
+        w, h = C.c_int(), C.c_int()
+        self.check(self.lib.bi_full_result(None, 0, C.byref(w), C.byref(h)))
+        pixels = np.empty((h.value*w.value, 4), dtype=np.float32)
+        self.check(self.lib.bi_full_result(pixels.ctypes.data_as(C.POINTER(C.c_float)),
+                                          pixels.size, C.byref(w), C.byref(h)))
+        return pixels, w.value, h.value
+
+    def preview(self, frame, dimensions, view, plane, near, far, ortho, start, observer):
+        """Yield progressively refined buffers. Caller holds LOCK until closed."""
+        width, height = dimensions
+        cancel = CANCEL(lambda _: int(observer.test_break()))
+        progress = PROGRESS(lambda _, f: observer.update_progress(f))
+        self.lib.bi_full_callbacks(cancel, progress, None)
+        try:
+            self.check(self.lib.bi_full_preview_begin(frame, width, height,
+                (C.c_float*16)(*view), (C.c_float*4)(*plane), near, far, ortho))
+            divider = 1
+            while max(1,width//divider)*max(1,height//divider) > start*start:
+                divider *= 2
+            while True:
+                if observer.test_break(): raise InterruptedError('Viewport render superseded')
+                self.check(self.lib.bi_full_preview_step(max(1,width//divider), max(1,height//divider)))
+                yield self.result()
+                if divider == 1: break
+                divider //= 2
+        finally:
+            self.lib.bi_full_preview_end()
             self.lib.bi_full_callbacks(CANCEL(), PROGRESS(), None)
 
     def render_pass(self, name):

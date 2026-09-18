@@ -5,11 +5,14 @@ The source file is never changed. Its old material DNA and shader trees are read
 before Blender's current versioning code replaces them with modern materials.
 """
 import ctypes as C
+from pathlib import Path
+import subprocess
+import tempfile
 import bpy
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
 from . import full_native as N
-from .legacy_ui import SCHEMA, TREE
+from .legacy_ui import SCHEMA, TREE, material_ramp_storage
 
 
 class Reader:
@@ -108,6 +111,7 @@ class Reader:
         for m in self.value(self.main, 'materials'):
             data = {'properties': self.props(m, SCHEMA['material']),
                     'nested': {k: self.props(m, v, k + '.') for k, v in SCHEMA['nested'].items()}, 'slots': []}
+            data['ramps'] = {name: self.ramp(self.value(m, name)) for name in ('diffuse_ramp', 'specular_ramp')}
             tree = self.value(m, 'node_tree')
             if tree and self.value(m, 'use_nodes'):
                 data['tree'] = self.tree(tree)
@@ -156,11 +160,32 @@ def restore_ramp(ramp, data):
 
 
 def import_file(path):
+    path = str(Path(bpy.path.abspath(path)).resolve())
     with N.LOCK:
         snapshot = Reader(path).snapshot()
     existing = set(bpy.data.user_map())
     try:
-        return _import_snapshot(path, snapshot)
+        # Direct append of some 2.79 scenes crashes inside modern Blender's
+        # BKE_blendfile_append (including scenes with old compositor data).
+        # Full-file versioning followed by append avoids that host crash. Use a
+        # separate factory-startup process so the user's open file is untouched.
+        with tempfile.TemporaryDirectory(prefix='blender-internal-import-') as folder:
+            converted = Path(folder) / 'versioned.blend'
+            log_path = Path(folder) / 'versioning.log'
+            command = [bpy.app.binary_path, '--background', '--factory-startup',
+                       '--disable-autoexec', '--python-exit-code', '1', '--python',
+                       str(Path(__file__).with_name('import_worker.py')), '--', path, str(converted)]
+            with log_path.open('w') as log:
+                try:
+                    result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
+                                            timeout=180)
+                except subprocess.TimeoutExpired as error:
+                    raise RuntimeError('Legacy scene conversion timed out after 180 seconds') from error
+            if result.returncode or not converted.is_file():
+                details = log_path.read_text(errors='replace')[-4000:]
+                raise RuntimeError('Legacy scene conversion failed (exit {}).\n{}'.format(
+                    result.returncode, details))
+            return _import_snapshot(str(converted), snapshot)
     except Exception:
         # Append/restore is one transaction. Never remove pre-existing user IDs.
         created = set(bpy.data.user_map()) - existing
@@ -220,6 +245,11 @@ def _import_snapshot(path, snapshot):
         props = maps['materials'][name].classic_internal
         props.use_legacy_settings = True
         assign(props.legacy, data['properties'])
+        if any(data.get('ramps', {}).values()):
+            storage = material_ramp_storage(maps['materials'][name])
+            for ramp_name, ramp in data['ramps'].items():
+                if ramp:
+                    restore_ramp(storage.nodes[ramp_name].color_ramp, ramp)
         for key, values in data['nested'].items():
             assign(getattr(props.legacy, key), values)
         if 'tree' in data:

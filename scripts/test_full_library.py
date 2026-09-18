@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
-library = (Path(os.environ['BI_TEST_ADDON_PATH']) / 'blender_internal/libblender_internal_full.dylib'
+library = (Path(os.environ['BI_TEST_ADDON_PATH']) / 'blender_internal/libblender_internal_full_v2.dylib'
            if os.environ.get('BI_TEST_ADDON_PATH') else ROOT/'build-full/lib/libblender_internal_full.dylib')
 lib=C.CDLL(str(library))
 lib.bi_full_initialize.argtypes=[C.c_char_p]

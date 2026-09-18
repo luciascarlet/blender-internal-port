@@ -1,4 +1,12 @@
 {
+  "pthreads": {
+    "platforms": ["Windows"],
+    "archive": "pthreads4w-code-v3.0.0.zip",
+    "directory": "pthreads4w-code-07053a521b0a9deb6db2a649cde1f828f2eb1f4f",
+    "url": "https://downloads.sourceforge.net/project/pthreads4w/pthreads4w-code-v3.0.0.zip",
+    "sha256": "b81136effb7185c77601fe2e0e6ac19bd996912e4814cebdd3010b0fac9e259b",
+    "options": []
+  },
   "zlib": {
     "archive": "zlib-1.3.1.tar.gz",
     "directory": "zlib-1.3.1",

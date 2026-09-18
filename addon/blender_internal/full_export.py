@@ -45,9 +45,8 @@ def export_material(host, material):
     host.set(handle, 'pass_index', material.pass_index)
     # Full original settings remain available, including mirror, transparency,
     # SSS, volumes, halos and strands. Existing prototype files keep their look.
-    if p.use_legacy_settings:
-        export_properties(host, handle, p.legacy, SCHEMA['material'])
-    else:
+    export_properties(host, handle, p.legacy, SCHEMA['material'])
+    if not p.use_legacy_settings:
         values = {
             'diffuse_color': p.color, 'specular_color': p.specular_color,
             'diffuse_shader': ('LAMBERT', 'OREN_NAYAR', 'TOON', 'MINNAERT', 'FRESNEL')[int(p.diffuse_shader)],
@@ -67,12 +66,17 @@ def export_material(host, material):
             host.set(handle, name, value)
     for name, schema in SCHEMA['nested'].items():
         export_properties(host, handle, getattr(p.legacy, name), schema, name + '.')
+    if p.ramp_storage:
+        for name in ('diffuse_ramp', 'specular_ramp'):
+            node = p.ramp_storage.nodes.get(name)
+            if node and getattr(p.legacy, 'use_' + name):
+                export_ramp(host, handle, name, node.color_ramp)
     for index, slot in enumerate(p.texture_slots):
         if slot.texture and slot.enabled:
             texture = export_texture(host, slot.texture)
             native_slot = host.check(host.lib.bi_full_texture_slot(handle, texture, index))
             export_properties(host, native_slot, slot.settings, SCHEMA['texture_slot'])
-    if p.node_tree:
+    if p.node_tree and p.use_nodes:
         export_tree(host, handle, p.node_tree)
     return handle
 
@@ -272,30 +276,16 @@ def export_mapping(host, handle, path, mapping):
         host.check(host.lib.bi_full_curve(handle, path.encode(), index, len(curve.points), xy, types))
 
 
-def export_scene(depsgraph, engine):
-    host = FN.Scene()
+def export_scene(depsgraph, engine, host=None, preview=False, space=None):
+    host = host if host is not None else FN.Scene()
     scene = depsgraph.scene_eval
     settings = scene.classic_internal
     host.set(host.handle, 'render.engine', 'BLENDER_RENDER')
     host.set(host.handle, 'render.resolution_percentage', 100)
-    host.set(host.handle, 'render.pixel_aspect_x', scene.render.pixel_aspect_x)
-    host.set(host.handle, 'render.pixel_aspect_y', scene.render.pixel_aspect_y)
-    host.set(host.handle, 'render.use_antialiasing', settings.samples != '1')
-    if settings.samples != '1':
-        host.set(host.handle, 'render.antialiasing_samples', {'2': '5', '3': '8', '4': '16'}[settings.samples])
-    host.set(host.handle, 'render.use_shadows', settings.shadows)
-    host.set(host.handle, 'render.use_raytrace', True)
-    host.set(host.handle, 'render.alpha_mode', 'TRANSPARENT' if scene.render.film_transparent else 'SKY')
-    if settings.use_legacy_settings:
-        export_properties(host, host.handle, settings.legacy, SCHEMA['render'], 'render.')
-        if settings.legacy.use_motion_blur:
-            raise RuntimeError('Legacy motion blur needs temporal geometry export; disable it for this render')
-        if settings.legacy.use_freestyle:
-            raise RuntimeError('This native build does not include Freestyle')
-        # Composition and output belong to the modern host, not the embedded main.
-        host.set(host.handle, 'render.use_compositing', False)
-        host.set(host.handle, 'render.use_sequencer', False)
-    export_region_passes(host, scene, depsgraph.view_layer)
+    from . import render_settings
+    render_settings.export(host, scene, preview=preview)
+    if not preview:
+        export_region_passes(host, scene, depsgraph.view_layer)
     world = host.create('WORLD', scene.world.name if scene.world else 'World')
     host.set(world, 'horizon_color', scene.world.color if scene.world else (0.05,)*3)
     host.set(world, 'ambient_color', (settings.ambient,)*3)
@@ -303,19 +293,26 @@ def export_scene(depsgraph, engine):
         export_properties(host, world, settings.world, SCHEMA['world'])
         for name, schema in SCHEMA['world_nested'].items():
             export_properties(host, world, getattr(settings.world, name), schema, name + '.')
-    camera = scene.camera.evaluated_get(depsgraph) if scene.camera else None
-    if camera is None:
-        raise RuntimeError('A camera is required')
-    ch = host.create('CAMERA', camera.name)
-    host.set(ch, 'matrix_world', matrix_values(camera.matrix_world))
-    for prop in ('type', 'lens', 'sensor_width', 'sensor_height', 'sensor_fit', 'shift_x', 'shift_y', 'ortho_scale', 'clip_start', 'clip_end'):
-        host.set(ch, 'data.' + prop, getattr(camera.data, prop))
-    if camera.data.type == 'PANO':
-        raise RuntimeError('Panoramic camera mapping needs validation')
+    if not preview:
+        camera = scene.camera.evaluated_get(depsgraph) if scene.camera else None
+        if camera is None:
+            raise RuntimeError('A camera is required')
+        ch = host.create('CAMERA', camera.name)
+        host.set(ch, 'matrix_world', matrix_values(camera.matrix_world))
+        for prop in ('type', 'lens', 'sensor_width', 'sensor_height', 'sensor_fit', 'shift_x', 'shift_y', 'ortho_scale', 'clip_start', 'clip_end'):
+            host.set(ch, 'data.' + prop, getattr(camera.data, prop))
+        if camera.data.type == 'PANO':
+            raise RuntimeError('Panoramic camera mapping needs validation')
+    def visible(obj):
+        if not preview:
+            return not obj.hide_render
+        return obj.original.visible_get(view_layer=depsgraph.view_layer, viewport=space)
     # Export light objects before nodes can refer to them.
-    instances = [(i.object, i.matrix_world.copy(), i.show_self) for i in depsgraph.object_instances]
-    for obj, matrix, show_self in instances:
-        if obj.type != 'LIGHT' or obj.hide_render or not show_self:
+    instances = [(i.object, i.matrix_world.copy(), i.show_self,
+                  visible(i.parent if preview and i.is_instance and i.parent else i.object))
+                 for i in depsgraph.object_instances]
+    for obj, matrix, show_self, is_visible in instances:
+        if obj.type != 'LIGHT' or not is_visible or not show_self:
             continue
         data = obj.data
         light = host.create('LIGHT', obj.name)
@@ -342,12 +339,12 @@ def export_scene(depsgraph, engine):
             if data.shape == 'RECTANGLE':
                 host.set(light, 'data.size_y', data.size_y)
     override = depsgraph.view_layer.material_override
-    for obj, matrix, show_self in instances:
+    for obj, matrix, show_self, is_visible in instances:
         if engine.test_break():
             raise InterruptedError('Render cancelled')
-        if show_self and not obj.hide_render and obj.type in ('VOLUME', 'POINTCLOUD', 'CURVES', 'GREASEPENCIL'):
+        if show_self and is_visible and obj.type in ('VOLUME', 'POINTCLOUD', 'CURVES', 'GREASEPENCIL'):
             raise RuntimeError('Geometry export is not implemented for ' + obj.type + ': ' + obj.name)
-        if obj.hide_render or not show_self or obj.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', 'META'):
+        if not is_visible or not show_self or obj.type not in ('MESH', 'CURVE', 'SURFACE', 'FONT', 'META'):
             continue
         mesh = obj.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
         if mesh is None:

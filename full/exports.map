@@ -1,0 +1,4 @@
+{
+  global: bi_full_*;
+  local: *;
+};

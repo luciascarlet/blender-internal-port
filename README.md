@@ -44,6 +44,22 @@ appends scenes and datablocks and preserves name mappings when names collide.
 Use the archive source for old particle systems or motion blur that the modern
 migration path cannot yet preserve faithfully.
 
+For everyday editing, use **Material Properties → New**, then **Diffuse → Diffuse
+Color**. Material slots include Blender's normal Edit Mode Assign/Select controls.
+The Internal node-editor header now creates and assigns graphs to the active
+material; **Edit Internal Nodes** opens them directly. See the
+[UI workflow guide](docs/UI.md) for textures, groups and copies.
+
+Render Properties expose AA and filters, shading switches, ray acceleration, tiles
+and threads, edge enhancement, fields and simplification. In original-file mode,
+**Load File Render Settings** enables editable overrides without changing the file.
+Output Properties retain Blender's output, metadata and post-processing controls.
+
+A progressive rendered viewport is available in **Current Scene** mode: choose
+**Rendered** shading (Z, R). It uses the original Internal preview pipeline and
+updates materials, nodes and geometry while you edit. Resolution and pause controls
+are under **Render Properties → Viewport Preview**.
+
 Legacy render passes are selectable in View Layer properties. Full legacy world
 controls include ambient occlusion and mist. Color management and final file output
 belong to modern Blender; **Standard** is useful for comparisons with 2.79's
@@ -64,21 +80,46 @@ had additional no-shadow differences; the default full engine removes that drive
 
 ## Build and test
 
+### GitHub Actions packages
+
+The **Build installable add-on** workflow runs on pushes, pull requests, and manual
+dispatch. It builds Windows x64, Linux x64 (Ubuntu 22.04), macOS Apple Silicon, and
+macOS Intel packages. Each job builds the pinned original renderer and the kernel,
+tests the kernel, and renders a small scene using the libraries extracted from its
+ZIP before uploading an artifact. These smoke checks do not certify full UI or
+legacy scene parity on every platform.
+
+Open **Actions → Build installable add-on → a successful run → Artifacts**, download
+the artifact matching your OS/CPU, and extract GitHub's outer artifact archive.
+Install the `blender-internal-port-*.zip` inside it using **Install from Disk**.
+Packages include corresponding source; Windows also includes its pthreads4w DLL.
+Artifacts are retained for 30 days. This workflow does not publish a release.
+
+All add-on modules and patches must be committed alongside the workflow: GitHub
+cannot build from local untracked files. To reproduce a job, install Python 3.11,
+Git, CMake 3.31.7 and a C/C++ compiler, run
+`python scripts/clone_sources.py --legacy-only`, then `python scripts/build.py`
+and `python scripts/test_package.py`. Windows uses an x64 Visual Studio 2022 Native
+Tools prompt with `CMAKE_GENERATOR=Ninja`; Linux needs the development packages
+listed in [the workflow](.github/workflows/build-addon.yml).
+
 Source revisions are pinned in `versions.json`:
 
 * Modern source: Blender v5.2.2, `d13f752e3b9c4f8c261cda552b1021f8bcc0382c`.
 * Legacy source: Blender v2.79b, `f4dc9f9d68bddaa206b692e1d077d1a1f2bb1528`.
 
-Prerequisites for the current build: macOS ARM64, Xcode command line tools, CMake,
-Python 3 and Git. Work remains on Linux, Windows and Intel macOS build validation.
+The local full build and packaged render smoke test are validated on macOS ARM64.
+The other platforms still require their first successful hosted workflow runs.
 
 ```sh
 python3 scripts/clone_sources.py
 python3 scripts/build.py
 ```
 
-The full engine build uses a separate `blender-legacy-port` worktree and the patch
-in `patches/legacy-full-host.patch`. It does not edit either pristine source clone.
+The full engine build uses a separate `blender-legacy-port` worktree and the patches
+in `patches/legacy-full-host.patch`, `patches/legacy-ray-stack.patch`, and
+`patches/legacy-portable-host.patch`.
+It does not edit either pristine source clone.
 The four image/font dependencies are built statically under `build-deps`; archive
 URLs, versions and SHA-256 checksums are pinned in `third_party/manifest.json`.
 The source folder inside the packaged ZIP can build the full library offline:

@@ -13,6 +13,7 @@
 #include "BLI_threads.h"
 #include "BLI_callbacks.h"
 #include "BLI_string.h"
+#include "BLI_rect.h"
 #include "BKE_appdir.h"
 #include "BKE_blender.h"
 #include "BKE_blendfile.h"
@@ -40,7 +41,11 @@
 #include "ED_datafiles.h"
 #include "BLO_readfile.h"
 
+#ifdef _WIN32
+#define FULL_API __declspec(dllexport)
+#else
 #define FULL_API __attribute__((visibility("default")))
+#endif
 static bContext *context;
 static struct Render *render;
 static char last_error[2048];
@@ -125,6 +130,66 @@ FULL_API int bi_full_render(int frame,int width,int height) {
   RE_BlenderFrame(render,G.main,scene,NULL,NULL,0,frame,false);
   if(should_break(NULL)) { strcpy(last_error,"Render cancelled");return 0; }
   return 1;
+}
+/* Adapted from 2.79 render_internal.c: Rendered viewport's progressive scanline
+ * job. No window/context pointers cross this boundary. The host owns scheduling,
+ * cancellation and display; the original render database is retained between
+ * resolution steps. All entry points require the same serialized library lock. */
+static void preview_stats(void *data, RenderStats *stats) { (void)data; (void)stats; }
+static float preview_view[4][4];
+static int preview_step_count;
+FULL_API int bi_full_preview_begin(int frame, int width, int height,
+                                   const float *view, const float *plane,
+                                   float near_clip, float far_clip, int ortho) {
+  Scene *scene=context?CTX_data_scene(context):NULL;
+  if(!scene || width<1 || height<1 || !view || !plane) {
+    strcpy(last_error,"Invalid viewport scene or dimensions");return 0;
+  }
+  if(render) RE_FreeRender(render);
+  render=RE_NewRender("Legacy Viewport Preview");
+  RE_stats_draw_cb(render,NULL,preview_stats);
+  RE_SetReports(render,&reports);
+  RE_test_break_cb(render,NULL,should_break);
+  RE_progress_cb(render,NULL,progress);
+  G.is_break=false;
+  scene->r.cfra=frame;
+  EvaluationContext eval_ctx={0};
+  eval_ctx.mode=DAG_EVAL_PREVIEW;
+  BKE_scene_update_for_newframe(&eval_ctx,G.main,scene,scene->lay);
+  RenderData rd=scene->r;
+  rd.mode &= ~(R_OSA|R_MBLUR|R_BORDER|R_PANORAMA|R_FIELDS|R_EDGE_FRS);
+  rd.scemode &= ~(R_DOSEQ|R_DOCOMP|R_FREE_IMAGE|R_EXR_TILE_FILE|R_FULL_SAMPLE);
+  rd.scemode |= R_VIEWPORT_PREVIEW|R_SINGLE_LAYER;
+  RE_InitState(render,NULL,&rd,NULL,width,height,NULL);
+  rctf viewplane={plane[0],plane[1],plane[2],plane[3]};
+  if(ortho) RE_SetOrtho(render,&viewplane,near_clip,far_clip);
+  else RE_SetWindow(render,&viewplane,near_clip,far_clip);
+  RE_SetPixelSize(render,(plane[1]-plane[0])/width);
+  memcpy(preview_view,view,sizeof(preview_view));
+  RE_SetView(render,preview_view);
+  RE_Database_FromScene(render,G.main,scene,scene->lay,0);
+  RE_Database_Preprocess(render);
+  RE_DataBase_ApplyWindow(render);
+  RE_updateRenderInstances(render,RE_OBJECT_INSTANCES_UPDATE_VIEW);
+  preview_step_count=0;
+  if(should_break(NULL)) { strcpy(last_error,"Viewport render cancelled");return 0; }
+  return 1;
+}
+FULL_API int bi_full_preview_step(int width,int height) {
+  if(!render || width<1 || height<1) { strcpy(last_error,"No viewport render");return 0; }
+  if(preview_step_count>1) RE_DataBase_IncrementalView(render,preview_view,1);
+  RE_ChangeResolution(render,width,height,NULL);
+  if(preview_step_count) {
+    RE_DataBase_IncrementalView(render,preview_view,0);
+    RE_DataBase_ApplyWindow(render);
+  }
+  RE_TileProcessor(render);
+  preview_step_count++;
+  if(should_break(NULL)) { strcpy(last_error,"Viewport render cancelled");return 0; }
+  return 1;
+}
+FULL_API void bi_full_preview_end(void) {
+  if(render) { RE_FreeRender(render);render=NULL; }
 }
 FULL_API int bi_full_result(float *rgba,uint64_t capacity,int *width,int *height) {
   if(!render) { strcpy(last_error,"No render result");return 0; }

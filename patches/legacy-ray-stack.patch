@@ -1,0 +1,22 @@
+--- a/source/blender/blenlib/intern/threads.c
++++ b/source/blender/blenlib/intern/threads.c
+@@ -266,7 +266,19 @@
+ 		if (tslot->avail) {
+ 			tslot->avail = 0;
+ 			tslot->callerdata = callerdata;
++#if defined(__APPLE__) && defined(__aarch64__)
++			/* The host renderer accepts up to 256 recursive ray bounces. macOS
++			 * pthreads default to a 512 KiB stack, insufficient for the ARM64
++			 * ShadeInput/legacy-node call frames. Keep ray behavior unchanged;
++			 * reserve a larger worker stack instead of silently clamping depth. */
++			pthread_attr_t attr;
++			pthread_attr_init(&attr);
++			pthread_attr_setstacksize(&attr, 16 * 1024 * 1024);
++			pthread_create(&tslot->pthread, &attr, tslot_thread_start, tslot);
++			pthread_attr_destroy(&attr);
++#else
+ 			pthread_create(&tslot->pthread, NULL, tslot_thread_start, tslot);
++#endif
+ 			return;
+ 		}
+ 	}

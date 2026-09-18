@@ -21,6 +21,17 @@ The archive source loads original DNA directly and uses the original dependency
 graph, particle and animation evaluation. It is a separate workflow from migration
 into modern editable objects; differences between those workflows are explicit.
 
+Editable import snapshots Internal settings from the original file, then versions
+geometry in a separate factory-startup host process with script auto-execution
+disabled. Direct append of a 2.79 compositor Viewer scene can crash modern Blender;
+appending the fully versioned temporary library avoids that path. Explicit library
+writing retains legacy textures whose users were removed by modern versioning.
+External paths are made absolute before relocation; packed images remain packed.
+`tests/import_reference.py` generates this crash fixture, and
+`tests/import_workflow.py` checks repeated imports, texture retention, external
+paths, the UI operator and atomic conversion failure. `tests/import_files.py`
+accepts additional private scenes after `--`, without bundling them in the add-on.
+
 ## Native patches
 
 `patches/legacy-full-host.patch` contains the source changes:
@@ -33,6 +44,12 @@ into modern editable objects; differences between those workflows are explicit.
   reproducible deadlock. The patch allocates/frees each lock with its Render owner
   and makes structure copies share the lock, preserving existing lock calls.
 * Add the isolated shared-library target and exported-symbol list.
+
+`patches/legacy-ray-stack.patch` reserves a 16 MiB stack for legacy render workers
+on macOS ARM64. Its default 512 KiB pthread stack overflowed in recursive
+refraction with material nodes at ray depth 256. This changes worker allocation,
+not ray-depth limits or shading. The regression suite exercises depth-256 glass
+in final and progressive viewport rendering.
 
 The original shading, scanline and ray-tracing algorithms are unchanged. Floating
 point architecture/compiler differences can still affect discontinuities, grazing
@@ -52,7 +69,9 @@ pixel equality: the reports include both mean and maximum channel error.
 | 18 material texture slots; procedural/image textures | Packed image, UV and bump regression |
 | UV layers and vertex color attributes | Original-file import comparisons |
 | Ambient occlusion, SSS, area lights | Joint reference fixture |
-| Original antialiasing and pixel filter | Eight-sample Mitchell-filter fixture |
+| Progressive rendered viewport | Original preview pipeline, pixel parity, GPU display, live edits and F12 coexistence |
+| Original antialiasing and pixel filter | Reference fixture and editable AA/filter regression |
+| Render properties, archive overrides, edge enhancement and alpha | Native RNA coverage, rendered pixel checks and save/reload |
 | Depth, normal, UV, color, emission, diffuse, specular, shadow, AO, environment, indirect, reflection, refraction, object/material index and mist passes | Native buffers and modern multilayer EXR integration |
 | Render borders, with and without crop | Pixel/dimension comparison against full reference render |
 | Cancellation and render after cancellation | Host pipeline test |
@@ -75,6 +94,11 @@ Reports are generated, not hand-authored:
 * `artifacts/legacy-cases/comparison.json`: six editable migration cases.
 * `artifacts/legacy-cases/archive-comparison.json`: eight original-file cases,
   including motion blur and strands.
+* `artifacts/material-workflow.json`: material UI/export and slot-assignment checks.
+* `artifacts/viewport-pipeline.json`: preview/F12 parity, snapshot ownership and cancellation.
+* `artifacts/viewport-ui.json`: live preview edits, navigation, visibility, pause and F12 checks.
+* `artifacts/render-workflow.json`: render UI/export, ownership, pixel effects and archive overrides.
+* `artifacts/ui-workflow.json`: windowed material ownership, pinning and group checks.
 * `artifacts/full-nodes.json`: node/export/storage/reload checks.
 * `artifacts/full-pipeline.json`: passes, borders, cancellation and stale handles.
 * `artifacts/full-stress.json`: 100 scene resets/loads/renders, deterministic output
@@ -88,7 +112,8 @@ broader image review and are not described as bit-identical.
 
 ## Remaining work before a comprehensive production release
 
-* Blender 5.2.2 LTS and Blender 5.3.0 Alpha passed the seven integration suites.
+* Blender 5.2.2 LTS and Blender 5.3.0 Alpha passed twelve suites, including
+  windowed material/node/render and progressive viewport regressions. See [UI workflows](UI.md).
   Exact modern-version coverage is recorded by `artifacts/validation-summary.json`;
   don't infer tested versions from the minimum add-on version or source checkout.
 * The modern evaluated-scene path does not yet export temporal geometry for motion
@@ -108,8 +133,7 @@ broader image review and are not described as bit-identical.
   modern image pixels can be transferred into the library, including float images.
 * Legacy compositor/sequencer nodes are not migrated or run by archive-source
   rendering. Modern compositing consumes the returned passes.
-* Render-layer conversion, baking, persistent/progressive viewport rendering,
-  preview thumbnails and broader undo/reload stress need
+* Render-layer conversion, baking, material preview thumbnails and broader undo/reload stress need
   dedicated integration work. Material previews are currently disabled.
 * The importer rolls back newly appended datablocks after a restoration failure;
   this is checked with failure injection. Broader malformed-file and linked-library
@@ -118,3 +142,9 @@ broader image review and are not described as bit-identical.
 
 The full pipeline is substantially beyond the initial proof of concept. These
 remaining boundaries mean it must still be labeled a development port.
+
+The rendered viewport currently ignores render borders and requires Current Scene
+mode. Native scene databases are reused between progressive resolution steps;
+view/scene changes rebuild the native database. Large scene snapshot export is
+still synchronous on the UI thread. Further incremental conversion could improve
+interaction latency on complex scenes.

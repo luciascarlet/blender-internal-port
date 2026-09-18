@@ -11,6 +11,7 @@ import subprocess
 import sys
 import zipfile
 from build_full import build as build_full
+from build_platform import cmake_defaults, full_library, library_name
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
@@ -19,14 +20,21 @@ args = parser.parse_args()
 addon = ROOT / 'addon/blender_internal'
 if not args.package_only:
     subprocess.run([sys.executable, str(ROOT / 'scripts/extract_legacy.py'), '--check'], check=True)
-    subprocess.run(['cmake', '-S', str(ROOT), '-B', str(ROOT / 'build'), '-DCMAKE_BUILD_TYPE=Release'], check=True)
+    subprocess.run(['cmake', '-S', str(ROOT), '-B', str(ROOT / 'build')] + cmake_defaults(), check=True)
     subprocess.run(['cmake', '--build', str(ROOT / 'build'), '--config', 'Release', '-j4'], check=True)
-    subprocess.run(['cmake', '--install', str(ROOT / 'build'), '--prefix', str(ROOT / 'addon')], check=True)
+    subprocess.run(['cmake', '--install', str(ROOT / 'build'), '--config', 'Release', '--prefix', str(ROOT / 'addon')], check=True)
     library = build_full()
 else:
-    library = ROOT / 'build-full/lib/libblender_internal_full.dylib'
-published_name = library.name.replace('_full', '_full_v2')
+    library = full_library()
+published_name = library_name('full', published=True)
 shutil.copyfile(library, addon / published_name)
+native_names = {published_name, library_name('core')}
+if platform.system() == 'Windows':
+    shutil.copyfile(ROOT / 'build-deps/install/bin/pthreadVC3.dll', addon / 'pthreadVC3.dll')
+    native_names.add('pthreadVC3.dll')
+for name in native_names:
+    if not (addon / name).is_file():
+        raise RuntimeError('Package is missing a native library: ' + name)
 shutil.copyfile(ROOT / 'LICENSE', addon / 'LICENSE')
 shutil.copyfile(ROOT / 'native/provenance.json', addon / 'provenance.json')
 versions = json.loads((ROOT / 'versions.json').read_text())
@@ -45,7 +53,7 @@ subprocess.run(['git', '-C', str(ROOT / 'blender-legacy'), 'archive', '--format=
 output = ROOT / 'dist' / ('blender-internal-port-' + platform.system().lower() + '-' + platform.machine() + '.zip')
 with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for path in sorted(addon.iterdir()):
-        if path.is_file() and path.name not in ('libblender_internal_full.dylib', 'libblender_internal_full.so'):
+        if path.is_file() and (path.name in native_names or path.suffix in ('.py', '.json') or path.name == 'LICENSE'):
             archive.write(path, path.relative_to(ROOT / 'addon'))
     # Complete source ships alongside the binary inside the same archive.
     prefix = 'blender_internal/source/'
@@ -53,19 +61,24 @@ with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
     for directory in ('full', 'native', 'scripts', 'tests', 'patches', 'docs'):
         for path in sorted((ROOT / directory).rglob('*')):
             if path.is_file() and '__pycache__' not in path.parts:
-                archive.write(path, prefix + str(path.relative_to(ROOT)))
+                archive.write(path, prefix + path.relative_to(ROOT).as_posix())
     for path in sorted(addon.iterdir()):
         if path.suffix in ('.py', '.json'):
-            archive.write(path, prefix + str(path.relative_to(ROOT)))
+            archive.write(path, prefix + path.relative_to(ROOT).as_posix())
     for path in sorted((ROOT / 'third_party/archives').iterdir()):
-        archive.write(path, prefix + str(path.relative_to(ROOT)), compress_type=zipfile.ZIP_STORED)
+        archive.write(path, prefix + path.relative_to(ROOT).as_posix(), compress_type=zipfile.ZIP_STORED)
     for name in ('CMakeLists.txt', 'LICENSE', 'README.md', 'versions.json', 'third_party/manifest.json'):
         archive.write(ROOT / name, prefix + name)
     archive.writestr(prefix + 'BUILD.txt',
-        'macOS ARM64, Xcode command line tools, CMake, Python 3, Git.\n'
+        'Python 3, Git, CMake 3.31, and a native C/C++ compiler are required.\n'
+        'macOS: Xcode command line tools (arm64 or x86_64).\n'
+        'Linux: GCC, make, libgl1-mesa-dev, libglu1-mesa-dev, libx11-dev.\n'
+        'Windows x64: Visual Studio 2022 x64 Native Tools prompt, Ninja.\n'
+        'On Windows set CMAKE_GENERATOR=Ninja before building.\n'
         'From this source directory: python3 scripts/build_full.py\n'
         'This extracts the included upstream archive, applies the host patches,\n'
-        'builds all four included dependencies statically and builds the dylib.\n'
+        'builds the included image/font dependencies statically and the engine library.\n'
+        'Windows also builds and ships the included pthreads4w DLL.\n'
         'No dependency downloads are required. All installation stays in this directory.\n'
         'Full engine source: Blender 2.79b, GPL-2.0-or-later.\n'
         'Third-party licenses are included in their corresponding source archives.\n')

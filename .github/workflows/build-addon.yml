@@ -1,0 +1,78 @@
+name: Build installable add-on
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: addon-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            target: windows-x64
+          - runner: ubuntu-22.04
+            target: linux-x64
+          - runner: macos-15
+            target: macos-arm64
+          - runner: macos-15-intel
+            target: macos-x64
+    env:
+      CMAKE_GENERATOR: Ninja
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install build tools
+        run: python -m pip install cmake==3.31.7 ninja==1.11.1.4
+      - name: Install Linux system headers
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgl1-mesa-dev libglu1-mesa-dev libx11-dev
+      - name: Set up MSVC x64 environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual Studio C++ tools not found' }
+          $vars = & cmd /s /c "`"$vs\Common7\Tools\VsDevCmd.bat`" -arch=x64 -host_arch=x64 >nul && set"
+          if ($LASTEXITCODE -ne 0) { throw 'VsDevCmd failed' }
+          foreach ($line in $vars) {
+            if ($line -match '^([^=]+)=(.*)$') {
+              "$($Matches[1])=$($Matches[2])" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+          }
+      - name: Fetch pinned Blender Internal source
+        run: python scripts/clone_sources.py --legacy-only
+      - name: Build both native engines and package corresponding source
+        run: python scripts/build.py
+      - name: Test native kernel
+        run: python -m unittest discover -s tests -p test_native.py
+      - name: Verify ZIP and render using its extracted native engine
+        run: python scripts/test_package.py
+      - name: Upload installable ZIP
+        uses: actions/upload-artifact@v7
+        with:
+          name: blender-internal-${{ matrix.target }}
+          path: dist/blender-internal-port-*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 from build_dependencies import build as build_dependencies
+from build_platform import cmake_defaults, full_library, static_library
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -17,8 +18,6 @@ def run(args, **kwargs):
 
 
 def build(skip_dependencies=False):
-    if platform.system() != 'Darwin' or platform.machine() != 'arm64':
-        raise RuntimeError('The full build is currently validated only on macOS ARM64')
     prefix = ROOT / 'build-deps/install' if skip_dependencies else build_dependencies()
     source = ROOT / 'blender-legacy'
     work = ROOT / 'blender-legacy-port'
@@ -36,30 +35,36 @@ def build(skip_dependencies=False):
             run(['git', '-C', source, 'worktree', 'add', '--detach', work, revision])
         else:
             shutil.copytree(source, work)
-    patch = ROOT / 'patches/legacy-full-host.patch'
-    applied = subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=work,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-    if not applied:
-        run(['git', 'apply', '--check', patch], cwd=work)
-        run(['git', 'apply', patch], cwd=work)
-    libraries = {'ZLIB_LIBRARY': 'libz.a', 'PNG_LIBRARY_RELEASE': 'libpng16.a',
-                 'JPEG_LIBRARY': 'libjpeg.a', 'FREETYPE_LIBRARY_RELEASE': 'libfreetype.a'}
-    options = ['-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_OSX_ARCHITECTURES=arm64',
+    for patch_name in ('legacy-full-host.patch', 'legacy-ray-stack.patch', 'legacy-portable-host.patch'):
+        patch = ROOT / 'patches' / patch_name
+        applied = subprocess.run(['git', 'apply', '--reverse', '--check', str(patch)], cwd=work,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if not applied:
+            run(['git', 'apply', '--check', patch], cwd=work)
+            run(['git', 'apply', patch], cwd=work)
+    libraries = {'ZLIB_LIBRARY': 'z', 'PNG_LIBRARY_RELEASE': 'png',
+                 'JPEG_LIBRARY': 'jpeg', 'FREETYPE_LIBRARY_RELEASE': 'freetype'}
+    options = cmake_defaults() + [
                '-DINTERNAL_DEPS_ROOT=' + str(prefix), '-DWITH_HEADLESS=ON',
                '-DWITH_PYTHON=OFF', '-DWITH_CPU_SSE=OFF', '-DWITH_CXX11=ON',
                '-DWITH_SYSTEM_GLEW=OFF', '-DWITH_BLENDER=ON', '-DWITH_PLAYER=OFF',
-               '-DCMAKE_C_FLAGS=-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion']
-    options += ['-D' + key + '=' + str(prefix / 'lib' / value) for key, value in libraries.items()]
+               '-DWITH_INPUT_IME=OFF', '-DWITH_BINRELOC=OFF']
+    if platform.system() != 'Windows':
+        options += ['-DCMAKE_C_FLAGS=-fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion']
+    options += ['-D' + key + '=' + str(static_library(prefix, value)) for key, value in libraries.items()]
     options += ['-D' + key + '=' + str(prefix / 'include') for key in ('ZLIB_INCLUDE_DIR', 'PNG_PNG_INCLUDE_DIR', 'JPEG_INCLUDE_DIR')]
     options += ['-D' + key + '=' + str(prefix / 'include/freetype2') for key in ('FREETYPE_INCLUDE_DIR_freetype2', 'FREETYPE_INCLUDE_DIR_ft2build')]
     run(['cmake', '-S', work, '-B', ROOT / 'build-full', '-C', work / 'build_files/cmake/config/blender_lite.cmake'] + options)
-    run(['cmake', '--build', ROOT / 'build-full', '--target', 'blender_internal_full', '-j8'])
-    library = ROOT / 'build-full/lib/libblender_internal_full.dylib'
-    links = subprocess.check_output(['otool', '-L', str(library)], text=True)
-    for line in links.splitlines()[2:]:
-        dependency = line.strip().split(' (', 1)[0]
-        if not dependency.startswith(('/System/Library/', '/usr/lib/')):
-            raise RuntimeError('Non-system runtime dependency remains: ' + dependency)
+    run(['cmake', '--build', ROOT / 'build-full', '--config', 'Release', '--target', 'blender_internal_full', '-j4'])
+    library = full_library()
+    if platform.system() == 'Windows':
+        shutil.copyfile(prefix / 'bin/pthreadVC3.dll', library.parent / 'pthreadVC3.dll')
+    if platform.system() == 'Darwin':
+        links = subprocess.check_output(['otool', '-L', str(library)], text=True)
+        for line in links.splitlines()[2:]:
+            dependency = line.strip().split(' (', 1)[0]
+            if not dependency.startswith(('/System/Library/', '/usr/lib/')):
+                raise RuntimeError('Non-system runtime dependency remains: ' + dependency)
     return library
 
 
