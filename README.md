@@ -1,5 +1,14 @@
 # Blender Internal for modern Blender
 
+Vibe-coded port of the Blender Internal renderer from 2.79b to modern Blender as a
+RenderEngine add-on, written almost entirely by GPT-6 Astra. Provided as-is with no
+warranty or support. Supports viewport rendering, legacy material nodes, and
+importing 2.79 scenes.
+
+All following text will have been written by GPT-6.
+
+---
+
 This project builds the **original Blender 2.79b Internal renderer** as an isolated
 native library and integrates it with modern Blender's RenderEngine API. The default
 backend executes the original scanline rasterizer, shading and texture nodes,
