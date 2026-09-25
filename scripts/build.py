@@ -40,7 +40,7 @@ shutil.copyfile(ROOT / 'native/provenance.json', addon / 'provenance.json')
 versions = json.loads((ROOT / 'versions.json').read_text())
 validation_file = ROOT / 'artifacts/validation-summary.json'
 validated = json.loads(validation_file.read_text())['runs'] if validation_file.exists() else []
-manifest = {'addon_version': '0.2.6', 'platform': platform.system(), 'architecture': platform.machine(),
+manifest = {'addon_version': '0.2.7', 'platform': platform.system(), 'architecture': platform.machine(),
             'upstream': versions, 'native_sha256': hashlib.sha256(library.read_bytes()).hexdigest(),
             'dependencies': json.loads((ROOT / 'third_party/manifest.json').read_text()),
             'validated_hosts': [run['version'] for run in validated if all(c['passed'] for c in run['checks'])],

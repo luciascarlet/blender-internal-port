@@ -33,6 +33,7 @@ if args.reference:
         if result.returncode or 'Traceback' in text or (marker and marker not in text):
             raise RuntimeError('Reference fixture generation failed: ' + filename)
 tests = [('scripts/test_full_library.py', 'full-parity.json'),
+         ('tests/image_cache.py', 'image-cache.json'),
          ('tests/material_workflow.py', 'material-workflow.json'),
          ('tests/render_workflow.py', 'render-workflow.json'),
          ('tests/viewport_pipeline.py', 'viewport-pipeline.json'),

@@ -2,7 +2,7 @@
 bl_info = {
     'name': 'Blender Internal — Experimental Port',
     'author': 'Blender authors; modern adapter contributors',
-    'version': (0, 2, 6),
+    'version': (0, 2, 7),
     'blender': (5, 2, 0),
     'location': 'Render engine selector; Render, Material and Light properties',
     'description': 'Original Blender Internal scanlines, legacy nodes and ray tracing in modern Blender',

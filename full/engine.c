@@ -461,6 +461,9 @@ FULL_API int bi_full_image(const char *name,int width,int height,const float *pi
   if(width<1||height<1||!pixels) return 0;
   ImBuf *buffer=IMB_allocImBuf(width,height,32,IB_rectfloat);
   if(!buffer) return 0;
+  /* Host pixels have no backing file to reload after cache eviction. Keep
+   * them for this scene's lifetime, like normal loaded still-image textures. */
+  buffer->userflags |= IB_PERSISTENT;
   memcpy(buffer->rect_float,pixels,(size_t)width*height*4*sizeof(float));
   struct Image *image=BKE_image_add_from_imbuf(buffer,name);
   IMB_freeImBuf(buffer);
@@ -471,6 +474,7 @@ FULL_API int bi_full_image_bytes(const char *name,int width,int height,const uns
   if(width<1||height<1||!pixels) return 0;
   ImBuf *buffer=IMB_allocImBuf(width,height,32,IB_rect);
   if(!buffer) return 0;
+  buffer->userflags |= IB_PERSISTENT;
   memcpy(buffer->rect,pixels,(size_t)width*height*4);
   IMB_colormanagement_assign_rect_colorspace(buffer,is_data?"Non-Color":"sRGB");
   struct Image *image=BKE_image_add_from_imbuf(buffer,name);
