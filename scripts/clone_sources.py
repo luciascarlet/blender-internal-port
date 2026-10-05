@@ -14,7 +14,8 @@ for name in (('legacy',) if args.legacy_only else ('modern', 'legacy')):
     version = versions[name]
     destination = ROOT / version['directory']
     if not destination.exists():
-        subprocess.run(['git', 'clone', '--depth', '1', '--branch', version['tag'], versions['upstream'], str(destination)], check=True)
+        # Keep checkout bytes identical to the pinned Git objects on Windows too.
+        subprocess.run(['git', 'clone', '-c', 'core.autocrlf=false', '--depth', '1', '--branch', version['tag'], versions['upstream'], str(destination)], check=True)
     actual = subprocess.check_output(['git', '-C', str(destination), 'rev-parse', 'HEAD'], text=True).strip()
     if actual != version['commit']:
         raise SystemExit('Existing checkout has a different commit; leaving it unchanged: ' + str(destination))

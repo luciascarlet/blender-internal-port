@@ -48,7 +48,7 @@ def build(skip_dependencies=False):
                '-DINTERNAL_DEPS_ROOT=' + str(prefix), '-DWITH_HEADLESS=ON',
                '-DWITH_PYTHON=OFF', '-DWITH_CPU_SSE=OFF', '-DWITH_CXX11=ON',
                '-DWITH_SYSTEM_GLEW=OFF', '-DWITH_BLENDER=ON', '-DWITH_PLAYER=OFF',
-               '-DWITH_INPUT_IME=OFF', '-DWITH_BINRELOC=OFF']
+               '-DWITH_INPUT_IME=OFF', '-DWITH_BINRELOC=OFF', '-DWITH_BOOST=OFF']
     if platform.system() != 'Windows':
         options += ['-DCMAKE_C_FLAGS=-fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion']
     options += ['-D' + key + '=' + str(static_library(prefix, value)) for key, value in libraries.items()]
