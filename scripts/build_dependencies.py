@@ -34,7 +34,8 @@ def build():
             raise RuntimeError('Source archive checksum mismatch: ' + str(archive))
         source = BASE / 'sources' / item['directory']
         if not source.exists():
-            run(['tar', '-xf', archive, '-C', BASE / 'sources'])
+            print('Extracting ' + str(archive), flush=True)
+            shutil.unpack_archive(archive, BASE / 'sources')
         if name == 'pthreads':
             # Build the DLL so pthreads4w manages process/thread attachment itself.
             subprocess.run(['nmake', '/nologo', 'VC'], cwd=source, check=True)
